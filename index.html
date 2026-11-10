@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drum Play-Along</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="highway"></canvas>
+
+<div id="hud">
+  <div id="score-panel">
+    <div id="combo">COMBO 0</div>
+    <div id="score">SCORE 0</div>
+  </div>
+</div>
+
+<div id="topbar">
+  <div class="file-group">
+    <button id="btn-audio">🎵 Audio</button>
+    <button id="btn-midi">🥁 Drum .mid</button>
+    <span id="audio-name" class="fname">no audio</span>
+    <span id="midi-name" class="fname">no chart</span>
+  </div>
+  <div class="transport">
+    <button id="btn-mode" title="Ganti mode tampilan (M)">🏛 Highway</button>
+    <button id="btn-play">▶ Play</button>
+    <span id="time-label">0:00 / 0:00</span>
+  </div>
+  <div class="offsets">
+    <label>Sync <input id="offset" type="range" min="-500" max="500" step="5" value="0"><span id="offset-val">0ms</span></label>
+  </div>
+</div>
+
+<div id="midi-bar">
+  <label>Kit: <select id="midi-device"><option value="">— none —</option></select></label>
+  <span id="midi-status">Web MIDI off</span>
+  <button id="demo-btn">Demo song</button>
+</div>
+
+<div id="loading" class="hidden">
+  <div id="loading-text">Loading…</div>
+</div>
+
+<input id="file-audio" type="file" accept="audio/*" hidden>
+<input id="file-midi" type="file" accept=".mid,.midi,audio/midi" hidden>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
