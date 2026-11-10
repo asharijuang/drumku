@@ -67,20 +67,22 @@ export function createHighway(canvas, opts = {}) {
       ctx.stroke();
     }
 
+    const tOf = (n) => n.tw ?? n.t;
     const t0 = now;
     const t1 = now + lookAhead;
     let idx = opts.lastIdx || 0;
-    while (idx < notes.length && notes[idx].t < t0 - 1) idx++;
+    while (idx < notes.length && tOf(notes[idx]) < t0 - 1) idx++;
     if (opts.lastIdx !== idx) opts.lastIdx = idx;
 
     const judgeLine = now + (h - hitY) / h * lookAhead;
 
     for (let i = idx; i < notes.length; i++) {
       const n = notes[i];
-      if (n.t > t1) break;
+      const nt = tOf(n);
+      if (nt > t1) break;
       const lane = laneById(n.lane);
       if (!lane) continue;
-      const visibleT = n.t - judgeLine;
+      const visibleT = nt - judgeLine;
       if (visibleT < -0.4) continue;
       const y = hitY - (visibleT) / lookAhead * h;
       const x = startX + LANES.indexOf(lane) * laneW + laneW / 2;
@@ -130,7 +132,7 @@ export function createHighway(canvas, opts = {}) {
   }
 
   function isdangered(n, judgeLine, dangerWindow) {
-    return Math.abs(n.t - judgeLine) < dangerWindow && !n.judged;
+    return Math.abs((n.tw ?? n.t) - judgeLine) < dangerWindow && !n.judged;
   }
 
   function drawMarker(lane, x, y, r, n, danger = false, alpha = 1) {

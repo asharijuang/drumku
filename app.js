@@ -1,15 +1,43 @@
 import { parseMidi } from './midi.js';
 import { chartFromNotes, laneOf } from './lanes.js';
-import { createAudio, generateDemoSong } from './audio.js';
+import { createAudio, generateDemoSong, bufferToWav } from './audio.js';
 import { createHighway, fmtTime } from './highway.js';
 import { createSheet } from './sheet.js';
+import { createCoach } from './coach.js';
+import { PROVIDER_LABEL, defaultConfig, listModels, chat } from './llm.js';
 
 const audio = createAudio();
 const canvas = document.getElementById('highway');
 const highway = createHighway(canvas, {});
 const sheet = createSheet(canvas);
+const coach = createCoach();
 let mode = localStorage.getItem('mode') || 'highway';
 let chart = [];
+let rawBeats = null;
+let rate = +(localStorage.getItem('rate') || 100) / 100;
+
+function scaleBeatsWall() {
+  if (!rawBeats) return null;
+  const out = new Float64Array(rawBeats.length);
+  for (let i = 0; i < rawBeats.length; i++) out[i] = rawBeats[i] / rate;
+  return out;
+}
+
+function invalidateChartTimes() {
+  for (const n of chart) {
+    delete n.tw;
+    delete n.b;
+  }
+  sheet.setBeats(scaleBeatsWall());
+}
+
+function applyRate(percent) {
+  percent = Math.max(25, Math.min(150, Math.round(percent) || 100));
+  audio.setRate(percent / 100);
+  rate = percent / 100;
+  localStorage.setItem('rate', percent);
+  invalidateChartTimes();
+}
 
 const el = {
   loading: document.getElementById('loading'),
@@ -26,6 +54,8 @@ const el = {
   midiStatus: document.getElementById('midi-status'),
   demo: document.getElementById('demo-btn'),
   modeBtn: document.getElementById('btn-mode'),
+  tempoNum: document.getElementById('tempo-num'),
+  tempoRange: document.getElementById('tempo-range'),
 };
 
 function setMode(m) {
@@ -51,7 +81,8 @@ function hideLoading() {
 
 function setChart(rawNotes, name, beats) {
   chart = chartFromNotes(rawNotes);
-  sheet.setBeats(beats);
+  rawBeats = beats || null;
+  sheet.setBeats(scaleBeatsWall());
   scanIdx = 0;
   score = 0;
   combo = 0;
@@ -87,7 +118,7 @@ async function startDemo() {
   showLoading('Generating demo…');
   try {
     const { buffer, chart: demoChart } = await generateDemoSong();
-    audio.setBuffer(buffer);
+    await audio.setBlob(bufferToWav(buffer));
     el.audioName.textContent = 'demo-song (built-in)';
     const demoBeats = new Float64Array(Math.ceil(buffer.duration / 0.5));
     for (let k = 0; k < demoBeats.length; k++) demoBeats[k] = k * 0.5;
@@ -126,11 +157,12 @@ function visualTime() {
 }
 
 function markMisses(target) {
-  while (scanIdx < chart.length && chart[scanIdx].t < target - judgeWindow) {
+  while (scanIdx < chart.length && (chart[scanIdx].tw ?? chart[scanIdx].t) < target - judgeWindow) {
     const n = chart[scanIdx];
     if (!n.judged) {
       n.judged = 'miss';
       combo = 0;
+      coach.onMiss(n.lane);
       updateScore();
     }
     scanIdx++;
@@ -144,10 +176,11 @@ function judge(hitLane) {
     let bestDist = Infinity;
     for (let i = Math.max(0, scanIdx - 8); i < chart.length; i++) {
       const n = chart[i];
-      if (n.t < target - 1.5) continue;
-      if (n.t > target + 1) break;
+      const nt = n.tw ?? n.t;
+      if (nt < target - 1.5) continue;
+      if (nt > target + 1) break;
       if (n.judged || n.lane !== hitLane) continue;
-      const d = Math.abs(n.t - target);
+      const d = Math.abs(nt - target);
       if (d < bestDist) {
         bestDist = d;
         best = n;
@@ -157,10 +190,12 @@ function judge(hitLane) {
       best.judged = 'hit';
       combo++;
       score += combo >= 8 ? 150 : 100;
+      coach.onAttempt(hitLane, true, ((best.tw ?? best.t) - target) * 1000);
       highway.addHitFlash(hitLane);
       sheet.addHitFlash(hitLane);
     } else {
       combo = 0;
+      coach.onGhost();
       highway.addFeedback('×', '#ff5252', canvas.clientWidth / 2);
       sheet.addFeedback('×', '#ff5252', 0);
     }
@@ -236,6 +271,256 @@ el.play.onclick = togglePlay;
 el.demo.onclick = startDemo;
 el.modeBtn.onclick = () => setMode(mode === 'highway' ? 'sheet' : 'highway');
 el.device.onclick = () => setupMidi();
+
+const coachPanel = document.getElementById('coach-panel');
+const coachMsgs = document.getElementById('coach-msgs');
+const coachInput = document.getElementById('coach-input');
+const btnCoach = document.getElementById('btn-coach');
+const btnCoachClose = document.getElementById('coach-close');
+const btnCoachSend = document.getElementById('coach-send');
+
+const llmStatus = document.getElementById('llm-status');
+
+const settingsOverlay = document.getElementById('settings-overlay');
+const elSettings = {
+  close: document.getElementById('settings-close'),
+  open: document.getElementById('btn-settings'),
+  nav: document.getElementById('settings-nav'),
+  provider: document.getElementById('set-provider'),
+  tone: document.getElementById('set-tone'),
+  insight: document.getElementById('set-insight'),
+  autoSum: document.getElementById('set-autosum'),
+  ollamaBase: document.getElementById('set-ollama-base'),
+  ollamaModel: document.getElementById('set-ollama-model'),
+  ollamaDetect: document.getElementById('btn-ollama-detect'),
+  ollamaRow: document.getElementById('row-ollama'),
+  bridgeRow: document.getElementById('row-bridge'),
+  bridgeBase: document.getElementById('set-bridge-base'),
+  model: document.getElementById('set-model'),
+  bridgeStatus: document.getElementById('bridge-status'),
+  bridgeCheck: document.getElementById('btn-bridge-check'),
+  test: document.getElementById('btn-llm-test'),
+  testResult: document.getElementById('llm-test-result'),
+};
+
+let cfg = {};
+try {
+  cfg = { ...defaultConfig(), ...JSON.parse(localStorage.getItem('llmCfg') || '{}') };
+} catch (e) {
+  cfg = defaultConfig();
+}
+function saveCfg() {
+  localStorage.setItem('llmCfg', JSON.stringify(cfg));
+}
+
+const settingsState = {
+  tone: () => cfg.tone || 'motivator',
+  insight: () => cfg.autoInsight !== false,
+  autoSum: () => cfg.autoSummary !== false,
+};
+
+let llmHistory = [];
+
+function providerActive() {
+  return cfg.provider && cfg.provider !== 'local';
+}
+
+function updateLlmStatus(text) {
+  llmStatus.textContent = text;
+}
+
+function refreshProviderStatus() {
+  if (!providerActive()) {
+    updateLlmStatus('Coach lokal (rule-based)');
+    return;
+  }
+  const model = cfg.model && cfg.model !== '(default)' ? cfg.model : '';
+  updateLlmStatus(`AI: ${PROVIDER_LABEL[cfg.provider]}${model ? ' — ' + model : ''}`);
+}
+
+async function ollamaDetect() {
+  elSettings.ollamaModel.innerHTML = '<option value="">— memuat… —</option>';
+  try {
+    const models = await listModels({ provider: 'ollama', ollamaBase: cfg.ollamaBase || 'http://localhost:11434' });
+    elSettings.ollamaModel.innerHTML = '<option value="">— pilih model —</option>';
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      elSettings.ollamaModel.appendChild(opt);
+    }
+    if (cfg.model && models.includes(cfg.model)) elSettings.ollamaModel.value = cfg.model;
+    else if (models.length) {
+      elSettings.ollamaModel.value = models[0];
+      cfg.model = models[0];
+      saveCfg();
+    }
+  } catch (e) {
+    elSettings.ollamaModel.innerHTML = '<option value="">— tidak tersedia —</option>';
+  }
+}
+
+async function bridgeCheck() {
+  elSettings.bridgeStatus.textContent = 'mengecek…';
+  try {
+    const res = await fetch((cfg.bridgeBase || 'http://127.0.0.1:3232') + '/status', { signal: AbortSignal.timeout(5000) });
+    const status = await res.json();
+    const on = Object.entries(status).filter(([, ok]) => ok).map(([p]) => p);
+    const current = status[cfg.provider] === true;
+    elSettings.bridgeStatus.textContent = (current ? '✓ CLI siap: ' : 'CLI ' + cfg.provider + ' tidak ada. ') + 'tersedia: ' + (on.join(', ') || '-') + '.';
+  } catch (e) {
+    elSettings.bridgeStatus.textContent = 'Bridge tidak jalan — jalankan: node bridge.js';
+  }
+}
+
+async function testProvider() {
+  elSettings.testResult.textContent = 'menguji…';
+  try {
+    if (!providerActive()) { elSettings.testResult.textContent = 'Provider lokal: selalu tersedia (rule-based).'; return; }
+    const answer = await chat(cfg, [
+      { role: 'system', content: 'Jawab dengan satu kata saja: pong.' },
+      { role: 'user', content: 'ping' },
+    ]);
+    elSettings.testResult.textContent = '✓ ' + (answer || '(kosong)').slice(0, 60);
+  } catch (e) {
+    elSettings.testResult.textContent = '✕ ' + e.message;
+  }
+}
+
+function applyProviderVisibility() {
+  elSettings.ollamaRow.classList.toggle('hidden', cfg.provider !== 'ollama');
+  elSettings.bridgeRow.classList.toggle('hidden', cfg.provider !== 'opencode' && cfg.provider !== 'claude' && cfg.provider !== 'codex');
+}
+
+function initSettings() {
+  elSettings.provider.value = cfg.provider || 'local';
+  elSettings.tone.value = settingsState.tone();
+  elSettings.insight.checked = settingsState.insight();
+  elSettings.autoSum.checked = settingsState.autoSum();
+  elSettings.ollamaBase.value = cfg.ollamaBase || 'http://localhost:11434';
+  elSettings.bridgeBase.value = cfg.bridgeBase || 'http://127.0.0.1:3232';
+  elSettings.model.value = cfg.model === '(default)' ? '' : (cfg.model || '');
+  applyProviderVisibility();
+  refreshProviderStatus();
+}
+
+elSettings.open.onclick = () => { initSettings(); settingsOverlay.classList.remove('hidden'); };
+elSettings.close.onclick = () => settingsOverlay.classList.add('hidden');
+settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden'); });
+elSettings.nav.onclick = (e) => {
+  const b = e.target.closest('button[data-page]');
+  if (!b) return;
+  elSettings.nav.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+  document.getElementById('page-assistant').classList.toggle('hidden', b.dataset.page !== 'assistant');
+  document.getElementById('page-provider').classList.toggle('hidden', b.dataset.page !== 'provider');
+};
+
+elSettings.provider.onchange = () => {
+  cfg.provider = elSettings.provider.value;
+  cfg.model = '';
+  if (cfg.provider === 'ollama') ollamaDetect();
+  if (cfg.provider !== 'local') bridgeCheck();
+  applyProviderVisibility();
+  saveCfg();
+  refreshProviderStatus();
+};
+elSettings.tone.onchange = () => { cfg.tone = elSettings.tone.value; saveCfg(); };
+elSettings.insight.onchange = () => { cfg.autoInsight = elSettings.insight.checked; saveCfg(); };
+elSettings.autoSum.onchange = () => { cfg.autoSummary = elSettings.autoSum.checked; saveCfg(); };
+elSettings.ollamaBase.onchange = () => { cfg.ollamaBase = elSettings.ollamaBase.value.trim() || 'http://localhost:11434'; saveCfg(); ollamaDetect(); };
+elSettings.ollamaDetect.onclick = ollamaDetect;
+elSettings.ollamaModel.onchange = () => { cfg.model = elSettings.ollamaModel.value; saveCfg(); refreshProviderStatus(); };
+elSettings.bridgeBase.onchange = () => { cfg.bridgeBase = elSettings.bridgeBase.value.trim() || 'http://127.0.0.1:3232'; saveCfg(); };
+elSettings.model.onchange = () => { cfg.model = elSettings.model.value.trim(); saveCfg(); refreshProviderStatus(); };
+elSettings.bridgeCheck.onclick = bridgeCheck;
+elSettings.test.onclick = testProvider;
+
+document.getElementById('llm-open-settings').onclick = elSettings.open.onclick;
+
+async function askLlm(text) {
+  llmHistory.push({ role: 'user', content: text });
+  if (llmHistory.length > 10) llmHistory = llmHistory.slice(-10);
+  const tone = settingsState.tone();
+  const toneText = {
+    motivator: 'Gaya bicara: hangat, suportif, memotivasi.',
+    blunt: 'Gaya bicara: blak-blakan, tanpa basa-basi, wajib kasih call-to-action.',
+    technical: 'Gaya bicara: teknis dan analitis, pakai angka/milidetik bila relevan.',
+  }[tone];
+  const messages = [
+    {
+      role: 'system',
+      content: 'Kamu coach drum pribadi dalam web app latihan drum ala Guitar Hero. Bahasa Indonesia. ' + toneText +
+        ' Jawaban singkat (maksimal ~150 kata), langsung ke inti, TIDAK memakai markdown. Beri drill konkret. GM drum map: kick/snare/hi-hat/tom/crash/ride.',
+    },
+    { role: 'system', content: 'Data performa user saat ini: ' + coach.contextSummary() },
+    ...llmHistory,
+  ];
+  const answer = await chat(cfg, messages);
+  llmHistory.push({ role: 'assistant', content: answer });
+  return answer;
+}
+
+async function coachAsk(text) {
+  coachSay(text, 'me');
+  if (providerActive()) {
+    const thinking = coachSay('…');
+    try {
+      const answer = await askLlm(text);
+      thinking.textContent = answer;
+      coachMsgs.scrollTop = coachMsgs.scrollHeight;
+      return;
+    } catch (e) {
+      thinking.textContent = '(' + PROVIDER_LABEL[cfg.provider] + ' gagal — ' + (e.message || 'tidak tersedia') + '. Cadangan ke coach lokal.)';
+      coachMsgs.scrollTop = coachMsgs.scrollHeight;
+    }
+  }
+  const answer = coach.reply(text);
+  if (answer) coachSay(answer);
+}
+
+let coachOpen = false;
+
+function coachSay(text, who = 'ai') {
+  const div = document.createElement('div');
+  div.className = 'coach-msg ' + who;
+  div.textContent = text;
+  coachMsgs.appendChild(div);
+  coachMsgs.scrollTop = coachMsgs.scrollHeight;
+  return div;
+}
+
+function toggleCoach(force) {
+  coachOpen = force !== undefined ? force : !coachOpen;
+  coachPanel.classList.toggle('hidden', !coachOpen);
+  document.body.classList.toggle('coach-open', coachOpen);
+  setTimeout(() => { highway.resize(); sheet.resize(); }, 50);
+}
+
+btnCoach.onclick = () => toggleCoach();
+btnCoachClose.onclick = () => toggleCoach(false);
+btnCoachSend.onclick = () => {
+  const t = coachInput.value.trim();
+  if (!t) return;
+  coachInput.value = '';
+  coachAsk(t);
+};
+coachInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') btnCoachSend.onclick();
+});
+document.querySelectorAll('#coach-chips button').forEach((b) => {
+  b.onclick = () => coachAsk(b.dataset.q);
+});
+
+el.tempoNum.onchange = () => {
+  el.tempoRange.value = el.tempoNum.value;
+  applyRate(+el.tempoNum.value);
+  el.tempoNum.blur();
+};
+el.tempoRange.oninput = () => {
+  el.tempoNum.value = el.tempoRange.value;
+  applyRate(+el.tempoRange.value);
+};
+
 document.getElementById('btn-audio').onclick = () => document.getElementById('file-audio').click();
 document.getElementById('btn-midi').onclick = () => document.getElementById('file-midi').click();
 document.getElementById('file-audio').onchange = (e) => { if (e.target.files[0]) loadAudioFile(e.target.files[0]); };
@@ -244,14 +529,38 @@ document.getElementById('file-midi').onchange = (e) => { if (e.target.files[0]) 
 el.offset.oninput = () => {
   el.offsetVal.textContent = (el.offset.value > 0 ? '+' : '') + el.offset.value + 'ms';
 };
+el.offsetVal.textContent = '0ms';
+
+let lastInsightAt = -1;
+audio.onEnded = () => {
+  el.play.textContent = '▶ Play';
+  if (settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
+};
+el.play.textContent = '▶ Play';
 
 setupMidi();
 setMode(mode);
+audio.setRate(rate);
+el.tempoNum.value = Math.round(rate * 100);
+el.tempoRange.value = Math.round(rate * 100);
+coachSay(coach.greeting());
+
+function coachPeriodic(now) {
+  if (!audio.playing || !coachOpen || !settingsState.insight()) return;
+  if (now > 30 && (lastInsightAt === -1 || now - lastInsightAt > 45) && coach.hasData()) {
+    lastInsightAt = now;
+    const acc = coach.accuracy();
+    if (acc !== null && acc < 0.75) {
+      coachSay('Insight dadakan: ' + coach.reply('lane terlemah'));
+    }
+  }
+}
 
 function loop() {
   if (mode === 'sheet') sheet.render(visualTime(), chart);
   else highway.render(visualTime(), chart, {});
   el.time.textContent = `${fmtTime(audio.currentTime())} / ${fmtTime(audio.duration())}`;
+  coachPeriodic(audio.currentTime());
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

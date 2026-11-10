@@ -21,10 +21,22 @@ Harus lewat `localhost` / HTTPS — Web MIDI & ES modules tidak jalan via `file:
 
 Keyboard fallback (buat tes tanpa hardware): `J` kick, `F` snare, `D` hi-hat, `S` toms, `K` ride, `L` crash.
 
+## Fitur latihan
+
+- **Tempo practice 25–150%**: isi angka atau geser slider di topbar. Pitch tetap (time-stretch), timing scoring & notes ikut menyesuaikan. Tempo tersimpan otomatis.
+- **AI Coach**: klik `Coach` (kanan atas) buat panel ngobrol. Default: coach engine lokal yang analisa data kamu sungguhan (akurasi per lane, rata-rata timing telat/cepat, combo, pukulan di luar chart) — jalan tanpa internet.
+- **LLM via Ollama (opsional)**: centang `LLM lokal` di bawah panel coach, app auto-detect Ollama di `http://localhost:11434` dan tampilkan daftar model. Kalau Ollama mati/gak bisa reach, otomatis fallback ke coach lokal. Cara install:
+  ```powershell
+  # di Windows
+  ollama serve
+  ollama pull llama3.1:8b
+  ```
+  Ollama default CORS sudah mengizinkan origin `localhost:*`, jadi gak perlu opsi tambahan. Keputusan desain: coach lokal tetap jadi fallback — app gak pernah mat gara-gara LLM.
+
 ## Dua mode tampilan
 
 - **Highway** (`🛣`): 6 lane vertikal ala Guitar Hero — notes jatuh ke hit line.
-- **Sheet** (`🎼`): not balok drum sungguhan — percussion clef, note-head bulat (drum) & silang-x (cymbal), open hi-hat ditandai `o`, barline + nomor bar, tempo ngikut tempo map file MIDI-nya.
+- **Sheet** (`🎼`): not balok drum sungguhan — percussion clef, note-head warna per instrumen (bulat = drum, silang-x kecil = cymbal), open hi-hat ditandai `o`, barline + nomor bar, grid per ketukan, tempo ngikut tempo map file MIDI-nya. Layout 3 baris yang wrap otomatis, jadi lagu cepat tetap kebaca: baris tengah = posisi sekarang, atas = yang baru lewat, bawah = preview bar berikutnya.
 
 Toggle pakai tombol di topbar atau shortcut **M**. Mode disimpan di localStorage.
 

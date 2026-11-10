@@ -29,7 +29,10 @@
     <span id="time-label">0:00 / 0:00</span>
   </div>
   <div class="offsets">
+    <label>Tempo <input id="tempo-num" type="number" min="25" max="150" step="5" value="100">% <input id="tempo-range" type="range" min="25" max="150" step="5" value="100"></label>
     <label>Sync <input id="offset" type="range" min="-500" max="500" step="5" value="0"><span id="offset-val">0ms</span></label>
+    <button id="btn-coach">Coach</button>
+    <button id="btn-settings">⚙ Setting</button>
   </div>
 </div>
 
@@ -45,6 +48,84 @@
 
 <input id="file-audio" type="file" accept="audio/*" hidden>
 <input id="file-midi" type="file" accept=".mid,.midi,audio/midi" hidden>
+
+<aside id="coach-panel" class="hidden">
+  <div id="coach-head">
+    <span>COACH</span>
+    <button id="coach-close">✕</button>
+  </div>
+  <div id="coach-msgs"></div>
+  <div id="coach-chips">
+    <button data-q="analisa sesi">Analisa sesi</button>
+    <button data-q="tips timing">Tips timing</button>
+    <button data-q="lane terlemah">Lane terlemah</button>
+    <button data-q="saran tempo">Saran tempo</button>
+    <button data-q="motivasi dong">Motivasi</button>
+  </div>
+  <div id="llm-row">
+    <span id="llm-status">Coach lokal</span>
+    <button id="llm-open-settings">ubah AI provider…</button>
+  </div>
+  <div id="coach-input-row">
+    <input id="coach-input" placeholder="Tanya coach…">
+    <button id="coach-send">Kirim</button>
+  </div>
+</aside>
+
+<div id="settings-overlay" class="hidden">
+  <div id="settings-page">
+    <div id="settings-head">
+      <span>⚙ SETTINGS</span>
+      <button id="settings-close">✕</button>
+    </div>
+    <div id="settings-body">
+      <nav id="settings-nav">
+        <button data-page="assistant" class="active">AI Assistant</button>
+        <button data-page="provider">LLM Provider</button>
+      </nav>
+      <div id="settings-content">
+        <section id="page-assistant">
+          <h2>AI Assistant</h2>
+          <div class="field"><label>Gaya bicara coach</label>
+            <select id="set-tone">
+              <option value="motivator">Motivator (hangat & suportif)</option>
+              <option value="blunt">To the point (blak-blakan)</option>
+              <option value="technical">Teknis (analisis detail)</option>
+            </select>
+          </div>
+          <div class="field"><label><input type="checkbox" id="set-insight" checked> Insight otomatis saat latihan</label></div>
+          <div class="field"><label><input type="checkbox" id="set-autosum" checked> Ringkasan otomatis saat lagu kelar</label></div>
+          <p class="hint">Setting ini mempengaruhi cara coach bicara dan kapan dia menyapa.</p>
+        </section>
+        <section id="page-provider" class="hidden">
+          <h2>LLM Provider</h2>
+          <div class="field"><label>Provider</label>
+            <select id="set-provider">
+              <option value="local">Coach lokal (rule-based, offline)</option>
+              <option value="ollama">Ollama (model lokal, direct)</option>
+              <option value="opencode">OpenCode (CLI)</option>
+              <option value="claude">Claude Code (OAuth)</option>
+              <option value="codex">Codex (OpenAI CLI)</option>
+            </select>
+          </div>
+          <div class="field" id="row-ollama"><label>Ollama base URL</label>
+            <input id="set-ollama-base" type="text" placeholder="http://localhost:11434">
+            <div class="inline"><select id="set-ollama-model"></select><button id="btn-ollama-detect">Deteksi</button></div>
+          </div>
+          <div class="field hidden" id="row-bridge"><label>Bridge URL (jalankan: node bridge.js)</label>
+            <input id="set-bridge-base" type="text" placeholder="http://127.0.0.1:3232">
+            <div class="field"><label>Model (opsional, kosong = default CLI)</label>
+              <input id="set-model" type="text" placeholder="mis. sonnet, gpt-5.1">
+            </div>
+            <div class="inline"><span id="bridge-status"></span><button id="btn-bridge-check">Cek</button></div>
+          </div>
+          <div class="field"><button id="btn-llm-test">Test koneksi</button><span id="llm-test-result"></span></div>
+          <p class="hint">Provider CLI (Claude/Codex/OpenCode) dipanggil lewat bridge lokal — browser tidak bisa spawn CLI langsung. Login dulu di masing-masing CLI: <code>claude</code> (OAuth), <code>codex</code>, <code>opencode</code>.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

@@ -18,6 +18,15 @@ export function laneOf(note) {
   return noteToLane.get(note) || null;
 }
 
+export function laneColorOf(noteOrLane) {
+  if (noteOrLane === null || noteOrLane === undefined) return null;
+  if (typeof noteOrLane === 'number') {
+    const laneId = noteToLane.get(noteOrLane);
+    return laneId ? laneById(laneId)?.color : null;
+  }
+  return laneById(noteOrLane)?.color || null;
+}
+
 export function laneById(id) {
   return LANES.find((l) => l.id === id);
 }
