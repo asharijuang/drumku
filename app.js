@@ -6,6 +6,7 @@ import { createSheet } from './sheet.js';
 import { createCoach } from './coach.js';
 import { PROVIDER_LABEL, defaultConfig, listModels, chat } from './llm.js';
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.esm.js';
+import { buildGroove, GROOVE_GENRES } from './groove.js';
 
 const audio = createAudio();
 const canvas = document.getElementById('highway');
@@ -531,12 +532,69 @@ async function askLlm(text) {
       content: 'Kamu coach drum pribadi dalam web app latihan drum ala Guitar Hero. Bahasa Indonesia. ' + toneText +
         ' Jawaban singkat (maksimal ~150 kata), langsung ke inti, TIDAK memakai markdown. Beri drill konkret. GM drum map: kick/snare/hi-hat/tom/crash/ride.',
     },
-    { role: 'system', content: 'Data performa user saat ini: ' + coach.contextSummary() },
+    {
+      role: 'system',
+      content: 'KAMU BISA MENGONTROL APP. Kalau user minta dibuatkan groove/latihan/notes/chart (mis. dari judul/genre lagu), JANGAN cuma menjelaskan — SELALU keluarkan satu blok perintah JSON di akhir jawaban, app akan langsung membuat not-nya:\n' +
+        '```drum\n{"action":"generateGroove","genre":"rock","bpm":90,"bars":8,"title":"Judul Lagu"}\n```\n' +
+        'genre harus salah satu: ' + GROOVE_GENRES.join(', ') + ' (tebak dari judul/feel lagu; default rock). Aksi lain: {"action":"setTempo","percent":80}, {"action":"play"}, {"action":"pause"}. Hanya satu blok drum per jawaban.',
+    },
+    { role: 'system', content: 'Status app: ' + platformState() },
+    { role: 'system', content: 'Data performa user: ' + coach.contextSummary() },
     ...llmHistory,
   ];
   const answer = await chat(cfg, messages);
   llmHistory.push({ role: 'assistant', content: answer });
   return answer;
+}
+
+function platformState() {
+  const parts = [
+    'mode=' + mode,
+    'status=' + (audio.playing ? 'main' : 'berhenti'),
+    'tempo=' + Math.round(rate * 100) + '%',
+    'lagu=' + (coach.currentSongTitle || coach.getSongInfo().title || '(belum ada)'),
+    'notes_di_chart=' + chart.length,
+  ];
+  return parts.join(', ');
+}
+
+// Execute action blocks the AI emits. Returns { clean, notes } — clean text + confirmation lines.
+function runDrumCommands(text) {
+  const notes = [];
+  const clean = text.replace(/```drum\s*([\s\S]*?)```/g, (_, body) => {
+    try {
+      const cmd = JSON.parse(body.trim());
+      const msg = execDrumCommand(cmd);
+      if (msg) notes.push(msg);
+    } catch (e) {
+      notes.push('(perintah app gagal diproses)');
+    }
+    return '';
+  }).replace(/\n{3,}/g, '\n\n').trim();
+  return { clean, notes };
+}
+
+function execDrumCommand(cmd) {
+  switch (cmd && cmd.action) {
+    case 'generateGroove': {
+      const raw = buildGroove({ genre: cmd.genre, bpm: cmd.bpm, bars: cmd.bars });
+      const title = cmd.title || `${cmd.genre || 'rock'} ${cmd.bpm || 90}bpm`;
+      setChart(raw, title);
+      coach.setSong(title);
+      if (mode === 'sheet') sheet.render(visualTime(), chart);
+      else highway.render(visualTime(), chart, {});
+      return `🥁 Groove "${title}" dibuat — ${raw.length} notes di highway. Tekan Play (Space) untuk mulai.`;
+    }
+    case 'setTempo': {
+      const pct = Math.max(25, Math.min(150, Math.round(cmd.percent) || 100));
+      applyRate(pct);
+      el.tempoNum.value = pct; el.tempoRange.value = pct;
+      return `⏱ Tempo diset ${pct}%.`;
+    }
+    case 'play': if (!audio.playing) togglePlay(); return '▶ Diputar.';
+    case 'pause': if (audio.playing) togglePlay(); return '⏸ Dijeda.';
+    default: return null;
+  }
 }
 
 async function coachAsk(text) {
@@ -545,8 +603,11 @@ async function coachAsk(text) {
     const thinking = coachSay('…', 'ai', false);
     try {
       const answer = await askLlm(text);
-      thinking.textContent = answer;
-      pushMsg('ai', answer);
+      const { clean, notes } = runDrumCommands(answer);
+      const shown = clean || '(oke)';
+      thinking.textContent = shown;
+      pushMsg('ai', shown);
+      notes.forEach((n) => coachSay(n, 'ai'));
       coachMsgs.scrollTop = coachMsgs.scrollHeight;
       return;
     } catch (e) {
