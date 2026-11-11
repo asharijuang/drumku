@@ -22,7 +22,7 @@ select, input[type=range] { accent-color: #7c6cff; }
 
 body.coach-open #highway { right: 330px; }
 body.coach-open #score-panel { right: 350px; }
-#coach-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 330px; background: rgba(14,14,24,.96); border-left: 1px solid #2a2a44; z-index: 15; display: flex; flex-direction: column; }
+#coach-panel { position: fixed; top: var(--topbar-h, 56px); right: 0; bottom: 0; width: 330px; background: rgba(14,14,24,.96); border-left: 1px solid #2a2a44; z-index: 15; display: flex; flex-direction: column; }
 #coach-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #2a2a44; font-weight: 700; letter-spacing: 2px; font-size: 12px; color: #7c6cff; }
 #coach-close { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; padding: 2px 8px; }
 #coach-close:hover { color: #fff; }
@@ -40,7 +40,7 @@ body.coach-open #score-panel { right: 350px; }
 #llm-status { color: #8888a8; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #llm-open-settings { font-size: 11px; padding: 3px 8px; }
 
-#tutorial-panel { position: fixed; top: 64px; bottom: 64px; left: 50%; transform: translateX(-50%); width: 560px; background: rgba(14,14,24,.98); border: 1px solid #2a2a44; border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.55); z-index: 16; display: flex; flex-direction: column; }
+#tutorial-panel { position: fixed; top: var(--topbar-h, 56px); left: 0; bottom: 0; width: 340px; background: rgba(14,14,24,.97); border-right: 1px solid #2a2a44; z-index: 15; display: flex; flex-direction: column; }
 #tutorial-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #2a2a44; font-weight: 700; letter-spacing: 2px; font-size: 12px; color: #7c6cff; }
 #tutorial-close { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; padding: 2px 8px; }
 #tutorial-close:hover { color: #fff; }
@@ -56,7 +56,9 @@ body.coach-open #score-panel { right: 350px; }
 #tutorial-text code { background: #1a1a2c; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
 #tutorial-text a { color: #7c6cff; }
 
-.resizer { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.resizer { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.resizer-left { left: 0; }
+.resizer-right { right: 0; }
 .resizer:hover { background: rgba(124,108,255,.35); }
 
 #settings-overlay { position: fixed; inset: 0; background: rgba(3,3,8,.8); z-index: 50; display: flex; align-items: center; justify-content: center; }

@@ -287,18 +287,17 @@ const tutorialContent = document.getElementById('tutorial-content');
 const tutorialHead = document.getElementById('tutorial-head');
 const tutorialClose = document.getElementById('tutorial-close');
 
-// Drag-to-resize width. mode 'center' = panel centered via translateX, so grows both sides.
-function addResizer(panel, mode) {
+// Drag-to-resize width. side = which edge the handle sits on (faces the center).
+function addResizer(panel, side) {
   const h = document.createElement('div');
-  h.className = 'resizer';
+  h.className = 'resizer resizer-' + side;
   panel.appendChild(h);
   h.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const sx = e.clientX, sw = panel.offsetWidth;
     const move = (ev) => {
-      const d = sx - ev.clientX; // + when dragging left
-      let w = sw + (mode === 'center' ? d * 2 : d);
-      panel.style.width = Math.max(280, Math.min(window.innerWidth - 40, w)) + 'px';
+      const d = side === 'left' ? sx - ev.clientX : ev.clientX - sx;
+      panel.style.width = Math.max(240, Math.min(window.innerWidth - 40, sw + d)) + 'px';
     };
     const up = () => {
       document.removeEventListener('mousemove', move);
@@ -308,8 +307,14 @@ function addResizer(panel, mode) {
     document.addEventListener('mouseup', up);
   });
 }
-addResizer(coachPanel, 'left');
-addResizer(tutorialPanel, 'center');
+addResizer(tutorialPanel, 'right'); // docked left, grows right
+addResizer(coachPanel, 'left'); // docked right, grows left
+
+// Keep side panels below the (wrapping) topbar so its buttons stay clickable.
+const topbarEl = document.getElementById('topbar');
+const syncTopbar = () => document.documentElement.style.setProperty('--topbar-h', topbarEl.offsetHeight + 'px');
+syncTopbar();
+new ResizeObserver(syncTopbar).observe(topbarEl);
 
 const llmStatus = document.getElementById('llm-status');
 
