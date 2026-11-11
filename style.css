@@ -40,6 +40,15 @@ body.coach-open #score-panel { right: 350px; }
 #llm-status { color: #8888a8; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #llm-open-settings { font-size: 11px; padding: 3px 8px; }
 
+#tutorial-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; background: rgba(14,14,24,.97); border-left: 1px solid #2a2a44; z-index: 16; display: flex; flex-direction: column; overflow-y: auto; }
+#tutorial-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #2a2a44; font-weight: 700; letter-spacing: 2px; font-size: 12px; color: #7c6cff; }
+#tutorial-close { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; padding: 2px 8px; }
+#tutorial-close:hover { color: #fff; }
+#tutorial-content { padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; }
+#tutorial-content button { font-size: 12px; padding: 6px 12px; border-radius: 6px; background: #1c1c30; text-align: left; }
+#tutorial-content button:hover { background: #2a2a46; }
+#tutorial-text { margin-top: 8px; color: #cfcfe0; }
+
 #settings-overlay { position: fixed; inset: 0; background: rgba(3,3,8,.8); z-index: 50; display: flex; align-items: center; justify-content: center; }
 #settings-page { width: min(720px, 92vw); max-height: 84vh; background: #12121e; border: 1px solid #2a2a44; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
 #settings-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #2a2a44; font-weight: 800; letter-spacing: 2px; font-size: 13px; color: #7c6cff; }
