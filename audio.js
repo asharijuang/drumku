@@ -72,10 +72,14 @@ export function createAudio() {
     el.playbackRate = Math.max(0.25, Math.min(2, r));
   }
 
+  function setVolume(v) {
+    el.volume = Math.max(0, Math.min(1, v));
+  }
+
   function getPlaying() { return !el.paused && !el.ended; }
 
   return {
-    loadFile, setBlob, play, pause, stop, seek, setRate,
+    loadFile, setBlob, play, pause, stop, seek, setRate, setVolume,
     currentTime, duration,
     get playing() { return getPlaying(); },
     set onEnded(cb) { onEndedCb = cb; },

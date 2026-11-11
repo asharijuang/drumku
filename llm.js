@@ -28,7 +28,10 @@ export async function listModels(cfg) {
   }
   if (cfg.provider === 'local') return [];
   const status = await fetchJson(cfg.bridgeBase.replace(/\/$/, '') + '/status');
-  if (status[cfg.provider] !== true) throw new Error('CLI ' + cfg.provider + ' tidak tersedia di bridge — jalankan: node bridge.js');
+  if (status[cfg.provider] !== true) {
+    const avail = Object.keys(status).filter((p) => status[p]);
+    throw new Error('CLI ' + cfg.provider + ' tidak terpasang di bridge' + (avail.length ? ' (tersedia: ' + avail.join(', ') + ')' : '') + ' — coach lokal tetap jalan. Jalankan: node bridge.js');
+  }
   return ['(default)'];
 }
 
@@ -42,11 +45,16 @@ export async function chat(cfg, messages) {
     }, 90_000);
     return (json.message && json.message.content) || '';
   }
-  const json = await fetchJson(cfg.bridgeBase.replace(/\/$/, '') + '/v1/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: cfg.provider, model: cfg.model === '(default)' ? '' : cfg.model, messages }),
-  }, 150_000);
+  let json;
+  try {
+    json = await fetchJson(cfg.bridgeBase.replace(/\/$/, '') + '/v1/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: cfg.provider, model: cfg.model === '(default)' ? '' : cfg.model, messages }),
+    }, 150_000);
+  } catch (e) {
+    throw new Error('Bridge tidak jalan — ' + (PROVIDER_LABEL[cfg.provider] || cfg.provider) + ' tidak bisa dipakai (coach lokal tetap jalan). Jalankan: node bridge.js');
+  }
   if (json.error) throw new Error(json.error);
   return json.content || '';
 }

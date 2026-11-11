@@ -403,14 +403,20 @@ async function ollamaDetect() {
 
 async function bridgeCheck() {
   elSettings.bridgeStatus.textContent = 'mengecek…';
+  let status;
   try {
     const res = await fetch((cfg.bridgeBase || 'http://127.0.0.1:3232') + '/status', { signal: AbortSignal.timeout(5000) });
-    const status = await res.json();
-    const on = Object.entries(status).filter(([, ok]) => ok).map(([p]) => p);
-    const current = status[cfg.provider] === true;
-    elSettings.bridgeStatus.textContent = (current ? '✓ CLI siap: ' : 'CLI ' + cfg.provider + ' tidak ada. ') + 'tersedia: ' + (on.join(', ') || '-') + '.';
+    status = await res.json();
   } catch (e) {
-    elSettings.bridgeStatus.textContent = 'Bridge tidak jalan — jalankan: node bridge.js';
+    elSettings.bridgeStatus.textContent = '✕ Bridge mati — ' + (PROVIDER_LABEL[cfg.provider] || cfg.provider) + ' tidak bisa dipakai (coach lokal tetap jalan). Nyalakan: node bridge.js';
+    return;
+  }
+  const parts = Object.keys(status).map((p) => p + (status[p] ? ' ✓' : ' ✕'));
+  if (status[cfg.provider] === true) {
+    elSettings.bridgeStatus.textContent = '✓ ' + (PROVIDER_LABEL[cfg.provider] || cfg.provider) + ' siap (' + parts.join(' · ') + ')';
+  } else {
+    const avail = Object.keys(status).filter((p) => status[p]);
+    elSettings.bridgeStatus.textContent = '✕ ' + (PROVIDER_LABEL[cfg.provider] || cfg.provider) + ' tidak terpasang (' + parts.join(' · ') + ')' + (avail.length ? ' — bisa pakai: ' + avail.join(', ') : '') + '. Coach lokal tetap jalan.';
   }
 }
 
@@ -449,10 +455,12 @@ function initSettings() {
 }
 
 elSettings.audioTempo.onchange = () => {
-  const val = elSettings.audioTempo.value;
-  cfg.tempo = parseInt(val);
+  const val = Math.max(25, Math.min(150, parseInt(elSettings.audioTempo.value) || 100));
+  cfg.tempo = val;
   saveCfg();
-  applyRate(val / 100);
+  el.tempoNum.value = val;
+  el.tempoRange.value = val;
+  applyRate(val);
 };
 
 elSettings.audioSync.oninput = () => {
@@ -460,7 +468,6 @@ elSettings.audioSync.oninput = () => {
   document.getElementById('set-sync-value').textContent = val + 'ms';
   cfg.sync = parseInt(val);
   saveCfg();
-  // Apply sync offset to audio
   el.offset.value = val;
   el.offsetVal.textContent = (val > 0 ? '+' : '') + val + 'ms';
 };
@@ -469,8 +476,9 @@ elSettings.audioVolume.oninput = () => {
   const val = parseFloat(elSettings.audioVolume.value);
   cfg.volume = val;
   saveCfg();
-  // Apply volume to audio context
-  audio.volume = val;
+  audio.setVolume(val);
+  const pct = Math.round(val * 100) + '%';
+  document.getElementById('set-volume-value').textContent = pct;
 };
 
 elSettings.open.onclick = () => { initSettings(); settingsOverlay.classList.remove('hidden'); };
@@ -496,14 +504,6 @@ elSettings.provider.onchange = () => {
 };
 
 document.getElementById('tutorial-close').onclick = () => tutorialPanel.classList.add('hidden');
-settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden'); });
-elSettings.nav.onclick = (e) => {
-  const b = e.target.closest('button[data-page]');
-  if (!b) return;
-  elSettings.nav.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
-  document.getElementById('page-assistant').classList.toggle('hidden', b.dataset.page !== 'assistant');
-  document.getElementById('page-provider').classList.toggle('hidden', b.dataset.page !== 'provider');
-};
 elSettings.insight.onchange = () => { cfg.autoInsight = elSettings.insight.checked; saveCfg(); };
 elSettings.autoSum.onchange = () => { cfg.autoSummary = elSettings.autoSum.checked; saveCfg(); };
 elSettings.ollamaBase.onchange = () => { cfg.ollamaBase = elSettings.ollamaBase.value.trim() || 'http://localhost:11434'; saveCfg(); ollamaDetect(); };
@@ -733,6 +733,7 @@ el.play.textContent = '▶ Play';
 setupMidi();
 setMode(mode);
 audio.setRate(rate);
+audio.setVolume(cfg.volume !== undefined ? cfg.volume : 1);
 el.tempoNum.value = Math.round(rate * 100);
 el.tempoRange.value = Math.round(rate * 100);
 try { sessions = JSON.parse(localStorage.getItem(SESS_KEY)) || []; } catch { sessions = []; }

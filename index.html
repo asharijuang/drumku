@@ -99,6 +99,7 @@
       <nav id="settings-nav">
         <button data-page="assistant" class="active">AI Assistant</button>
         <button data-page="provider">LLM Provider</button>
+        <button data-page="audio" class="">Audio</button>
       </nav>
       <div id="settings-content">
         <section id="page-assistant">
@@ -138,6 +139,19 @@
           </div>
           <div class="field"><button id="btn-llm-test">Test koneksi</button><span id="llm-test-result"></span></div>
           <p class="hint">Provider CLI (Claude/Codex/OpenCode) dipanggil lewat bridge lokal — browser tidak bisa spawn CLI langsung. Login dulu di masing-masing CLI: <code>claude</code> (OAuth), <code>codex</code>, <code>opencode</code>.</p>
+        </section>
+        <section id="page-audio" class="hidden">
+          <h2>Audio</h2>
+          <div class="field"><label>Tempo (%)</label>
+            <div class="inline"><input id="set-tempo" type="number" min="25" max="150" step="5" value="100"><input id="set-tempo-range" type="range" min="25" max="150" step="5" value="100"></div>
+          </div>
+          <div class="field"><label>Sync offset</label>
+            <div class="inline"><input id="set-sync" type="range" min="-500" max="500" step="5" value="0"><span id="set-sync-value">0ms</span></div>
+          </div>
+          <div class="field"><label>Volume</label>
+            <div class="inline"><input id="set-volume" type="range" min="0" max="1" step="0.05" value="1"><span id="set-volume-value">100%</span></div>
+          </div>
+          <p class="hint">Perubahan langsung diterapkan dan tersimpan otomatis. Tempo & sync sama dengan kontrol di topbar.</p>
         </section>
       </div>
     </div>

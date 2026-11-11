@@ -75,7 +75,7 @@ export function createSheet(canvas) {
   function render(now, chart) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#0a0a12';
-    ctx.fillRect(0, 0, w, h);    const rowH = h / 3;
+    ctx.fillRect(0, 0, w, h);    const rowH = h;
       const gap = Math.max(10, Math.min(14, rowH * 0.09));
     const playX = Math.round(w * 0.24);
     const bNow = beatsAt(now);
@@ -84,15 +84,15 @@ export function createSheet(canvas) {
     while (idx < chart.length) {
       const n = chart[idx];
       if (n.b === undefined) n.b = beatsAt(n.tw ?? n.t);
-      if (n.b < (curRow - 1) * ROW_BEATS - 1) idx++;
+      if (n.b < (curRow - 0) * ROW_BEATS - 1) idx++;
       else break;
     }
 
-    for (let band = 0; band < 3; band++) {
-      const row = curRow - 1 + band;
+    for (let band = 0; band < 1; band++) {
+      const row = curRow - 0 + band;
       if (row < 0) continue;
-      const bandTop = rowH * band;
-      const bandCY = bandTop + rowH * 0.56;
+      const bandTop = 0;
+      const bandCY = rowH * 0.56;
       const yFor = (pitchIdx) => bandCY + (8 - pitchIdx) * (gap / 2);
       const xStart = playX - (bNow - row * ROW_BEATS) * PX_PER_BEAT;
       const rowWidth = ROW_BEATS * PX_PER_BEAT;
