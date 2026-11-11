@@ -435,6 +435,12 @@ elSettings.provider.onchange = () => {
 document.getElementById('tutorial-close').onclick = () => tutorialPanel.classList.add('hidden');
 settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden'); });
 elSettings.nav.onclick = (e) => {
+  const b = e.target.closest('button[data-page]');
+  if (!b) return;
+  elSettings.nav.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+  document.getElementById('page-assistant').classList.toggle('hidden', b.dataset.page !== 'assistant');
+  document.getElementById('page-provider').classList.toggle('hidden', b.dataset.page !== 'provider');
+};
 elSettings.insight.onchange = () => { cfg.autoInsight = elSettings.insight.checked; saveCfg(); };
 elSettings.autoSum.onchange = () => { cfg.autoSummary = elSettings.autoSum.checked; saveCfg(); };
 elSettings.ollamaBase.onchange = () => { cfg.ollamaBase = elSettings.ollamaBase.value.trim() || 'http://localhost:11434'; saveCfg(); ollamaDetect(); };
