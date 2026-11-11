@@ -1,6 +1,6 @@
 import { parseMidi } from './midi.js';
 import { chartFromNotes, laneOf } from './lanes.js';
-import { createAudio, generateDemoSong, bufferToWav } from './audio.js';
+import { createAudio, generateDemoSong, bufferToWav, renderNotes } from './audio.js';
 import { createHighway, fmtTime } from './highway.js';
 import { createSheet } from './sheet.js';
 import { createCoach } from './coach.js';
@@ -559,31 +559,35 @@ function platformState() {
 }
 
 // Execute action blocks the AI emits. Returns { clean, notes } — clean text + confirmation lines.
-function runDrumCommands(text) {
-  const notes = [];
+async function runDrumCommands(text) {
+  const cmds = [];
   const clean = text.replace(/```drum\s*([\s\S]*?)```/g, (_, body) => {
-    try {
-      const cmd = JSON.parse(body.trim());
-      const msg = execDrumCommand(cmd);
-      if (msg) notes.push(msg);
-    } catch (e) {
-      notes.push('(perintah app gagal diproses)');
-    }
+    try { cmds.push(JSON.parse(body.trim())); } catch { cmds.push({ action: '_bad' }); }
     return '';
   }).replace(/\n{3,}/g, '\n\n').trim();
+  const notes = [];
+  for (const cmd of cmds) {
+    try { const msg = await execDrumCommand(cmd); if (msg) notes.push(msg); }
+    catch (e) { notes.push('(perintah app gagal: ' + (e.message || '') + ')'); }
+  }
   return { clean, notes };
 }
 
-function execDrumCommand(cmd) {
+async function execDrumCommand(cmd) {
   switch (cmd && cmd.action) {
     case 'generateGroove': {
-      const raw = buildGroove({ genre: cmd.genre, bpm: cmd.bpm, bars: cmd.bars });
-      const title = cmd.title || `${cmd.genre || 'rock'} ${cmd.bpm || 90}bpm`;
-      setChart(raw, title);
+      const bpm = Math.max(40, Math.min(220, Math.round(cmd.bpm) || 90));
+      const raw = buildGroove({ genre: cmd.genre, bpm, bars: cmd.bars });
+      const title = cmd.title || `${cmd.genre || 'rock'} ${bpm}bpm`;
+      const buffer = await renderNotes(raw);
+      await audio.setBlob(bufferToWav(buffer));
+      el.audioName.textContent = title;
+      const beatDur = 60 / bpm;
+      const beats = new Float64Array(Math.ceil(buffer.duration / beatDur));
+      for (let k = 0; k < beats.length; k++) beats[k] = 0.5 + k * beatDur;
+      setChart(raw, title, beats);
       coach.setSong(title);
-      if (mode === 'sheet') sheet.render(visualTime(), chart);
-      else highway.render(visualTime(), chart, {});
-      return `🥁 Groove "${title}" dibuat — ${raw.length} notes di highway. Tekan Play (Space) untuk mulai.`;
+      return `🥁 Groove "${title}" dibuat — ${raw.length} notes + audio siap. Tekan Play (Space).`;
     }
     case 'setTempo': {
       const pct = Math.max(25, Math.min(150, Math.round(cmd.percent) || 100));
@@ -603,7 +607,7 @@ async function coachAsk(text) {
     const thinking = coachSay('…', 'ai', false);
     try {
       const answer = await askLlm(text);
-      const { clean, notes } = runDrumCommands(answer);
+      const { clean, notes } = await runDrumCommands(answer);
       const shown = clean || '(oke)';
       thinking.textContent = shown;
       pushMsg('ai', shown);

@@ -123,6 +123,72 @@ export function bufferToWav(buffer) {
   return new Blob([ab], { type: 'audio/wav' });
 }
 
+// Render an arbitrary GM-note chart ([{note,t,vel}]) to an audio buffer so
+// AI-generated grooves are actually playable. Reuses simple synth voices.
+export async function renderNotes(rawNotes) {
+  const sr = 44100;
+  const last = rawNotes.reduce((m, n) => Math.max(m, n.t), 0);
+  const dur = last + 1.2;
+  const oc = new OfflineAudioContext(2, Math.ceil(dur * sr), sr);
+  const noise = (seconds) => {
+    const b = oc.createBuffer(1, Math.ceil(seconds * sr), sr);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  };
+  const kick = (t, v) => {
+    const o = oc.createOscillator(), g = oc.createGain();
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.9 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.connect(g).connect(oc.destination); o.start(t); o.stop(t + 0.32);
+  };
+  const snare = (t, v) => {
+    const n = oc.createBufferSource(); n.buffer = noise(0.22);
+    const f = oc.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+    const g = oc.createGain(); g.gain.setValueAtTime(0.5 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    n.connect(f).connect(g).connect(oc.destination); n.start(t);
+  };
+  const hat = (t, v, open) => {
+    const n = oc.createBufferSource(); n.buffer = noise(open ? 0.3 : 0.06);
+    const f = oc.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = open ? 6000 : 7000;
+    const g = oc.createGain(); g.gain.setValueAtTime((open ? 0.22 : 0.18) * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (open ? 0.25 : 0.05));
+    n.connect(f).connect(g).connect(oc.destination); n.start(t);
+  };
+  const cymbal = (t, v, seconds) => {
+    const n = oc.createBufferSource(); n.buffer = noise(seconds);
+    const f = oc.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 4500;
+    const g = oc.createGain(); g.gain.setValueAtTime(0.28 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + seconds);
+    n.connect(f).connect(g).connect(oc.destination); n.start(t);
+  };
+  const TOM_FREQ = { 48: 300, 50: 280, 47: 240, 45: 190, 43: 160, 41: 150, 58: 200 };
+  const tom = (t, v, note) => {
+    const freq = TOM_FREQ[note] || 200;
+    const o = oc.createOscillator(), g = oc.createGain();
+    o.frequency.setValueAtTime(freq * 1.3, t);
+    o.frequency.exponentialRampToValueAtTime(freq, t + 0.15);
+    g.gain.setValueAtTime(0.5 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    o.connect(g).connect(oc.destination); o.start(t); o.stop(t + 0.27);
+  };
+  for (const n of rawNotes) {
+    const v = Math.max(0.2, Math.min(1.2, (n.vel || 100) / 100));
+    const note = n.note, t = n.t;
+    if (note === 36 || note === 35) kick(t, v);
+    else if (note === 38 || note === 37 || note === 40) snare(t, v);
+    else if (note === 46) hat(t, v, true);
+    else if (note === 42 || note === 44 || note === 26) hat(t, v, false);
+    else if (note === 49 || note === 52 || note === 55 || note === 57) cymbal(t, v, 1.2);
+    else if (note === 51 || note === 53 || note === 59) cymbal(t, v, 0.5);
+    else tom(t, v, note); // remaining = toms
+  }
+  return oc.startRendering();
+}
+
 export async function generateDemoSong() {
   const bpm = 120;
   const bar = 2;
