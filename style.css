@@ -38,6 +38,12 @@ body.tutor-open #score-panel { right: 360px; }
 .coach-msg { max-width: 92%; padding: 8px 11px; border-radius: 10px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
 .coach-msg.ai { background: #1e1e34; align-self: flex-start; border-left: 3px solid #7c6cff; }
 .coach-msg.me { background: #2a2a46; align-self: flex-end; }
+.coach-msg.artifact { background: #14142a; border: 1px solid #3a3a60; border-left: 3px solid #7c6cff; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.art-title { font-weight: 700; font-size: 13px; color: #fff; }
+.art-meta { font-size: 11px; color: #9a9ac0; }
+.art-play { align-self: flex-start; margin-top: 2px; font-size: 12px; padding: 5px 12px; border-radius: 6px; background: #7c6cff; color: #fff; }
+.art-play:hover { background: #8d7dff; }
+.art-play:disabled { opacity: .5; cursor: default; }
 #coach-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 1px solid #2a2a44; }
 #coach-chips button { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: #1c1c30; }
 #coach-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #2a2a44; }

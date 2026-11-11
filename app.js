@@ -565,38 +565,30 @@ async function runDrumCommands(text) {
     try { cmds.push(JSON.parse(body.trim())); } catch { cmds.push({ action: '_bad' }); }
     return '';
   }).replace(/\n{3,}/g, '\n\n').trim();
-  const notes = [];
+  const results = [];
   for (const cmd of cmds) {
-    try { const msg = await execDrumCommand(cmd); if (msg) notes.push(msg); }
-    catch (e) { notes.push('(perintah app gagal: ' + (e.message || '') + ')'); }
+    try { const res = await execDrumCommand(cmd); if (res) results.push(res); }
+    catch (e) { results.push({ text: '(perintah app gagal: ' + (e.message || '') + ')' }); }
   }
-  return { clean, notes };
+  return { clean, results };
 }
 
 async function execDrumCommand(cmd) {
   switch (cmd && cmd.action) {
     case 'generateGroove': {
       const bpm = Math.max(40, Math.min(220, Math.round(cmd.bpm) || 90));
-      const raw = buildGroove({ genre: cmd.genre, bpm, bars: cmd.bars });
-      const title = cmd.title || `${cmd.genre || 'rock'} ${bpm}bpm`;
-      const buffer = await renderNotes(raw);
-      await audio.setBlob(bufferToWav(buffer));
-      el.audioName.textContent = title;
-      const beatDur = 60 / bpm;
-      const beats = new Float64Array(Math.ceil(buffer.duration / beatDur));
-      for (let k = 0; k < beats.length; k++) beats[k] = 0.5 + k * beatDur;
-      setChart(raw, title, beats);
-      coach.setSong(title);
-      return `🥁 Groove "${title}" dibuat — ${raw.length} notes + audio siap. Tekan Play (Space).`;
+      const spec = { kind: 'groove', genre: cmd.genre || 'rock', bpm, bars: Math.max(1, Math.min(32, Math.round(cmd.bars) || 8)), title: cmd.title || `${cmd.genre || 'rock'} ${bpm}bpm` };
+      const r = await loadGrooveArtifact(spec);
+      return { artifact: spec, text: `🥁 Groove "${r.title}" — ${r.count} notes. Tersimpan di sesi ini, bisa diputar ulang kapan saja.` };
     }
     case 'setTempo': {
       const pct = Math.max(25, Math.min(150, Math.round(cmd.percent) || 100));
       applyRate(pct);
       el.tempoNum.value = pct; el.tempoRange.value = pct;
-      return `⏱ Tempo diset ${pct}%.`;
+      return { text: `⏱ Tempo diset ${pct}%.` };
     }
-    case 'play': if (!audio.playing) togglePlay(); return '▶ Diputar.';
-    case 'pause': if (audio.playing) togglePlay(); return '⏸ Dijeda.';
+    case 'play': if (!audio.playing) togglePlay(); return { text: '▶ Diputar.' };
+    case 'pause': if (audio.playing) togglePlay(); return { text: '⏸ Dijeda.' };
     default: return null;
   }
 }
@@ -607,11 +599,14 @@ async function coachAsk(text) {
     const thinking = coachSay('…', 'ai', false);
     try {
       const answer = await askLlm(text);
-      const { clean, notes } = await runDrumCommands(answer);
+      const { clean, results } = await runDrumCommands(answer);
       const shown = clean || '(oke)';
       thinking.textContent = shown;
       pushMsg('ai', shown);
-      notes.forEach((n) => coachSay(n, 'ai'));
+      results.forEach((r) => {
+        if (r.artifact) coachArtifact(r.artifact, r.text);
+        else if (r.text) coachSay(r.text, 'ai');
+      });
       coachMsgs.scrollTop = coachMsgs.scrollHeight;
       return;
     } catch (e) {
@@ -636,6 +631,46 @@ function coachSay(text, who = 'ai', save = true) {
   return div;
 }
 
+// Render a saved groove artifact as a playable card in the chat.
+function coachArtifact(spec, text, save = true) {
+  const card = document.createElement('div');
+  card.className = 'coach-msg ai artifact';
+  const title = document.createElement('div');
+  title.className = 'art-title';
+  title.textContent = '🥁 ' + (spec.title || 'Groove');
+  const meta = document.createElement('div');
+  meta.className = 'art-meta';
+  meta.textContent = `${spec.genre || 'rock'} · ${spec.bpm || 90} bpm · ${spec.bars || 8} bar`;
+  const btn = document.createElement('button');
+  btn.className = 'art-play';
+  btn.textContent = '▶ Buka & mainkan';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await loadGrooveArtifact(spec); } finally { btn.disabled = false; }
+  };
+  card.append(title, meta, btn);
+  coachMsgs.appendChild(card);
+  coachMsgs.scrollTop = coachMsgs.scrollHeight;
+  if (save) pushMsg('ai', text || spec.title || 'Groove', spec);
+  return card;
+}
+
+// Build + render audio for a groove spec and load it onto the main screen.
+async function loadGrooveArtifact(spec) {
+  const bpm = Math.max(40, Math.min(220, Math.round(spec.bpm) || 90));
+  const raw = buildGroove({ genre: spec.genre, bpm, bars: spec.bars });
+  const title = spec.title || `${spec.genre || 'rock'} ${bpm}bpm`;
+  const buffer = await renderNotes(raw);
+  await audio.setBlob(bufferToWav(buffer));
+  el.audioName.textContent = title;
+  const beatDur = 60 / bpm;
+  const beats = new Float64Array(Math.ceil(buffer.duration / beatDur));
+  for (let k = 0; k < beats.length; k++) beats[k] = 0.5 + k * beatDur;
+  setChart(raw, title, beats);
+  coach.setSong(title);
+  return { title, count: raw.length };
+}
+
 // ---- Chat sessions (persisted to localStorage) ----
 const SESS_KEY = 'coachSessions';
 const coachSessionList = document.getElementById('coach-session-list');
@@ -645,9 +680,9 @@ let curSession = null;
 function saveSessions() {
   try { localStorage.setItem(SESS_KEY, JSON.stringify(sessions)); } catch {}
 }
-function pushMsg(who, text) {
+function pushMsg(who, text, artifact) {
   if (!curSession) return;
-  curSession.msgs.push({ who, text });
+  curSession.msgs.push(artifact ? { who, text, artifact } : { who, text });
   if (curSession.title === 'Sesi baru' && who === 'me') {
     curSession.title = text.slice(0, 40);
     renderSessionList();
@@ -669,7 +704,8 @@ function openSession(id) {
   coachMsgs.innerHTML = '';
   llmHistory = [];
   curSession.msgs.forEach((m) => {
-    coachSay(m.text, m.who, false);
+    if (m.artifact) coachArtifact(m.artifact, m.text, false);
+    else coachSay(m.text, m.who, false);
     llmHistory.push({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text });
   });
   llmHistory = llmHistory.slice(-10);
