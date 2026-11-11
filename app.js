@@ -5,6 +5,7 @@ import { createHighway, fmtTime } from './highway.js';
 import { createSheet } from './sheet.js';
 import { createCoach } from './coach.js';
 import { PROVIDER_LABEL, defaultConfig, listModels, chat } from './llm.js';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.esm.js';
 
 const audio = createAudio();
 const canvas = document.getElementById('highway');
@@ -286,6 +287,30 @@ const tutorialContent = document.getElementById('tutorial-content');
 const tutorialHead = document.getElementById('tutorial-head');
 const tutorialClose = document.getElementById('tutorial-close');
 
+// Drag-to-resize width. mode 'center' = panel centered via translateX, so grows both sides.
+function addResizer(panel, mode) {
+  const h = document.createElement('div');
+  h.className = 'resizer';
+  panel.appendChild(h);
+  h.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const sx = e.clientX, sw = panel.offsetWidth;
+    const move = (ev) => {
+      const d = sx - ev.clientX; // + when dragging left
+      let w = sw + (mode === 'center' ? d * 2 : d);
+      panel.style.width = Math.max(280, Math.min(window.innerWidth - 40, w)) + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+addResizer(coachPanel, 'left');
+addResizer(tutorialPanel, 'center');
+
 const llmStatus = document.getElementById('llm-status');
 
 const settingsOverlay = document.getElementById('settings-overlay');
@@ -563,48 +588,33 @@ audio.onEnded = () => {
   if (settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
 };
 
-// Tutorial section content
-const tutorialSections = {
-  basic: `
-    <h3>Dasar-dasar Kontrol Tangan</h3>
-    <ol>
-      <li>Paham subdivision: 16th notes (\$1\text{ e \& a}\$) dan sextuplet</li>
-      <li>Latihan dengan metronom lambat (60-70 BPM)</li>
-      <li>Kontrol fundamental rudiment: Single Stroke, Double Stroke, Paradiddle</li>
-      <li>Flam & Herta sebagai variasi bumbu</li>
-    </ol>`,
-  timing: `
-    <h3>Timing & Rhythm</h3>
-    <ol>
-      <li>Subdivision Seperenam Belas & Sextuplet</li>
-      <li>Chops berbasis ketukan yang terbagi presisi</li>
-      <li>Pelajari rasa ketukan 16th notes dan Sextuplets</li>
-      <li>Jalankan dengan metronom lambat (60-70 BPM)</li>
-    </ol>`,
-  techniques: `
-    <h3>Teknik Spesifik Drum</h3>
-    <ol>
-      <li>Single Stroke (N K N K): Kecepatan dan kelenturan dasar</li>
-      <li>Double Stroke (N N K K): Kontrol pantulan stik (rebound)</li>
-      <li>Paradiddle (N K N N - K N K K): Transisi arah tangan mulus</li>
-      <li>Flam & Herta: Variasi aksen sebagai bumpu utama</li>
-      <li>Hand-Foot Coordination: Integrasi Bass Drum dengan tangan</li>
-      <li>Pola Linear: N K K, N K N K, N K K N K K</li>
-      <li>Orchestration: Distribusi ke tom-tom dan cymbal</li>
-      <li>Chops Populer: Pola 16th Notes dan Triplet/Sextuplet</li>
-    </ol>`
-};
+// Tutorial: load sections from markdown files in /tutorial (see tutorial/manifest.json)
+const tutorialNav = document.getElementById('tutorial-nav');
+const tutorialText = document.getElementById('tutorial-text');
 
-function showTutorialSection(section) {
-  document.getElementById('tutorial-text').innerHTML = tutorialSections[section] || '';
+async function loadTutorialSection(file, btn) {
+  tutorialNav.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+  try {
+    const md = await fetch('tutorial/' + file).then((r) => r.text());
+    tutorialText.innerHTML = marked.parse(md);
+  } catch {
+    tutorialText.textContent = 'Gagal memuat tutorial.';
+  }
 }
 
-document.querySelectorAll('#tutorial-content button').forEach((b) => {
-  b.onclick = () => showTutorialSection(b.dataset.section);
-});
+fetch('tutorial/manifest.json')
+  .then((r) => r.json())
+  .then((sections) => {
+    sections.forEach((s, i) => {
+      const b = document.createElement('button');
+      b.textContent = s.title;
+      b.onclick = () => loadTutorialSection(s.file, b);
+      tutorialNav.appendChild(b);
+      if (i === 0) loadTutorialSection(s.file, b);
+    });
+  })
+  .catch(() => { tutorialText.textContent = 'Manifest tutorial tidak ditemukan.'; });
 
-// Initialize with first section
-document.querySelectorAll('#tutorial-content button')[0]?.click();
 el.play.textContent = '▶ Play';
 
 setupMidi();

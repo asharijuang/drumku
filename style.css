@@ -40,14 +40,24 @@ body.coach-open #score-panel { right: 350px; }
 #llm-status { color: #8888a8; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #llm-open-settings { font-size: 11px; padding: 3px 8px; }
 
-#tutorial-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; background: rgba(14,14,24,.97); border-left: 1px solid #2a2a44; z-index: 16; display: flex; flex-direction: column; overflow-y: auto; }
+#tutorial-panel { position: fixed; top: 64px; bottom: 64px; left: 50%; transform: translateX(-50%); width: 560px; background: rgba(14,14,24,.98); border: 1px solid #2a2a44; border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.55); z-index: 16; display: flex; flex-direction: column; }
 #tutorial-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #2a2a44; font-weight: 700; letter-spacing: 2px; font-size: 12px; color: #7c6cff; }
 #tutorial-close { background: none; border: none; color: #888; font-size: 15px; cursor: pointer; padding: 2px 8px; }
 #tutorial-close:hover { color: #fff; }
-#tutorial-content { padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; }
-#tutorial-content button { font-size: 12px; padding: 6px 12px; border-radius: 6px; background: #1c1c30; text-align: left; }
-#tutorial-content button:hover { background: #2a2a46; }
-#tutorial-text { margin-top: 8px; color: #cfcfe0; }
+#tutorial-content { flex: 1; overflow-y: auto; padding: 16px 18px; }
+#tutorial-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+#tutorial-nav button { font-size: 12px; padding: 6px 14px; border-radius: 20px; background: #1c1c30; }
+#tutorial-nav button:hover { background: #2a2a46; }
+#tutorial-nav button.active { background: #7c6cff; color: #fff; }
+#tutorial-text { color: #d2d2e4; font-size: 14px; line-height: 1.6; }
+#tutorial-text h1 { font-size: 18px; margin: 0 0 12px; color: #fff; }
+#tutorial-text h2 { font-size: 15px; margin: 16px 0 8px; color: #b9b0ff; }
+#tutorial-text ol, #tutorial-text ul { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+#tutorial-text code { background: #1a1a2c; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+#tutorial-text a { color: #7c6cff; }
+
+.resizer { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.resizer:hover { background: rgba(124,108,255,.35); }
 
 #settings-overlay { position: fixed; inset: 0; background: rgba(3,3,8,.8); z-index: 50; display: flex; align-items: center; justify-content: center; }
 #settings-page { width: min(720px, 92vw); max-height: 84vh; background: #12121e; border: 1px solid #2a2a44; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
