@@ -307,8 +307,8 @@ function addResizer(panel, side) {
     document.addEventListener('mouseup', up);
   });
 }
-addResizer(tutorialPanel, 'right'); // docked left, grows right
-addResizer(coachPanel, 'left'); // docked right, grows left
+addResizer(coachPanel, 'right'); // docked left, grows right
+addResizer(tutorialPanel, 'left'); // docked right, grows left
 
 // Keep side panels below the (wrapping) topbar so its buttons stay clickable.
 const topbarEl = document.getElementById('topbar');
@@ -509,10 +509,11 @@ async function askLlm(text) {
 async function coachAsk(text) {
   coachSay(text, 'me');
   if (providerActive()) {
-    const thinking = coachSay('…');
+    const thinking = coachSay('…', 'ai', false);
     try {
       const answer = await askLlm(text);
       thinking.textContent = answer;
+      pushMsg('ai', answer);
       coachMsgs.scrollTop = coachMsgs.scrollHeight;
       return;
     } catch (e) {
@@ -527,13 +528,81 @@ async function coachAsk(text) {
 let coachOpen = false;
 let tutorOpen = false;
 
-function coachSay(text, who = 'ai') {
+function coachSay(text, who = 'ai', save = true) {
   const div = document.createElement('div');
   div.className = 'coach-msg ' + who;
   div.textContent = text;
   coachMsgs.appendChild(div);
   coachMsgs.scrollTop = coachMsgs.scrollHeight;
+  if (save) pushMsg(who, text);
   return div;
+}
+
+// ---- Chat sessions (persisted to localStorage) ----
+const SESS_KEY = 'coachSessions';
+const coachSessionList = document.getElementById('coach-session-list');
+let sessions = [];
+let curSession = null;
+
+function saveSessions() {
+  try { localStorage.setItem(SESS_KEY, JSON.stringify(sessions)); } catch {}
+}
+function pushMsg(who, text) {
+  if (!curSession) return;
+  curSession.msgs.push({ who, text });
+  if (curSession.title === 'Sesi baru' && who === 'me') {
+    curSession.title = text.slice(0, 40);
+    renderSessionList();
+  }
+  saveSessions();
+}
+function startSession() {
+  curSession = { id: Date.now().toString(36), title: 'Sesi baru', created: Date.now(), msgs: [] };
+  sessions.unshift(curSession);
+  coachMsgs.innerHTML = '';
+  llmHistory = [];
+  coachSay(coach.greeting(), 'ai');
+  saveSessions();
+  renderSessionList();
+  coachSessionList.classList.add('hidden');
+}
+function openSession(id) {
+  curSession = sessions.find((s) => s.id === id) || sessions[0];
+  coachMsgs.innerHTML = '';
+  llmHistory = [];
+  curSession.msgs.forEach((m) => {
+    coachSay(m.text, m.who, false);
+    llmHistory.push({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text });
+  });
+  llmHistory = llmHistory.slice(-10);
+  renderSessionList();
+  coachSessionList.classList.add('hidden');
+}
+function deleteSession(id) {
+  sessions = sessions.filter((s) => s.id !== id);
+  saveSessions();
+  if (curSession && curSession.id === id) {
+    if (sessions.length) openSession(sessions[0].id);
+    else startSession();
+  } else renderSessionList();
+}
+function renderSessionList() {
+  coachSessionList.innerHTML = '';
+  sessions.forEach((s) => {
+    const row = document.createElement('div');
+    row.className = 'sess-row' + (curSession && s.id === curSession.id ? ' active' : '');
+    const t = document.createElement('span');
+    t.className = 'sess-title';
+    t.textContent = s.title || 'Sesi baru';
+    t.onclick = () => openSession(s.id);
+    const del = document.createElement('button');
+    del.className = 'sess-del';
+    del.textContent = '✕';
+    del.title = 'Hapus sesi';
+    del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    row.append(t, del);
+    coachSessionList.appendChild(row);
+  });
 }
 
 function toggleCoach(force) {
@@ -564,6 +633,12 @@ coachInput.addEventListener('keydown', (e) => {
 document.querySelectorAll('#coach-chips button').forEach((b) => {
   b.onclick = () => coachAsk(b.dataset.q);
 });
+
+document.getElementById('coach-new').onclick = startSession;
+document.getElementById('coach-sessions').onclick = () => {
+  renderSessionList();
+  coachSessionList.classList.toggle('hidden');
+};
 
 el.tutorialBtn.onclick = () => toggleTutorial();
 
@@ -627,7 +702,9 @@ setMode(mode);
 audio.setRate(rate);
 el.tempoNum.value = Math.round(rate * 100);
 el.tempoRange.value = Math.round(rate * 100);
-coachSay(coach.greeting());
+try { sessions = JSON.parse(localStorage.getItem(SESS_KEY)) || []; } catch { sessions = []; }
+if (sessions.length) openSession(sessions[0].id);
+else startSession();
 
 function coachPeriodic(now) {
   if (!audio.playing || !coachOpen || !settingsState.insight()) return;
