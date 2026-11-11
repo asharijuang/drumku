@@ -54,6 +54,7 @@ const el = {
   midiStatus: document.getElementById('midi-status'),
   demo: document.getElementById('demo-btn'),
   modeBtn: document.getElementById('btn-mode'),
+  tutorialBtn: document.getElementById('btn-tutorial'),
   tempoNum: document.getElementById('tempo-num'),
   tempoRange: document.getElementById('tempo-range'),
 };
@@ -108,6 +109,7 @@ async function loadMidiFile(file) {
   try {
     const parsed = parseMidi(await file.arrayBuffer());
     setChart(parsed.notes, file.name, parsed.beats);
+    coach.setSong(file.name);
   } catch (e) {
     alert('Gagal parse MIDI: ' + e.message);
   }
@@ -270,6 +272,7 @@ function setupMidi() {
 el.play.onclick = togglePlay;
 el.demo.onclick = startDemo;
 el.modeBtn.onclick = () => setMode(mode === 'highway' ? 'sheet' : 'highway');
+el.tutorialBtn.onclick = () => toggleTutorial();
 el.device.onclick = () => setupMidi();
 
 const coachPanel = document.getElementById('coach-panel');
@@ -278,6 +281,10 @@ const coachInput = document.getElementById('coach-input');
 const btnCoach = document.getElementById('btn-coach');
 const btnCoachClose = document.getElementById('coach-close');
 const btnCoachSend = document.getElementById('coach-send');
+const tutorialPanel = document.getElementById('tutorial-panel');
+const tutorialContent = document.getElementById('tutorial-content');
+const tutorialHead = document.getElementById('tutorial-head');
+const tutorialClose = document.getElementById('tutorial-close');
 
 const llmStatus = document.getElementById('llm-status');
 
@@ -424,7 +431,11 @@ elSettings.provider.onchange = () => {
   saveCfg();
   refreshProviderStatus();
 };
-elSettings.tone.onchange = () => { cfg.tone = elSettings.tone.value; saveCfg(); };
+
+elSettings.tutorialBtn.onclick = () => { initSettings(); tutorialPanel.classList.remove('hidden'); };
+document.getElementById('tutorial-close').onclick = () => tutorialPanel.classList.add('hidden');
+settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden'); });
+elSettings.nav.onclick = (e) => {
 elSettings.insight.onchange = () => { cfg.autoInsight = elSettings.insight.checked; saveCfg(); };
 elSettings.autoSum.onchange = () => { cfg.autoSummary = elSettings.autoSum.checked; saveCfg(); };
 elSettings.ollamaBase.onchange = () => { cfg.ollamaBase = elSettings.ollamaBase.value.trim() || 'http://localhost:11434'; saveCfg(); ollamaDetect(); };
@@ -496,6 +507,13 @@ function toggleCoach(force) {
   setTimeout(() => { highway.resize(); sheet.resize(); }, 50);
 }
 
+function toggleTutorial(force) {
+  tutorOpen = force !== undefined ? force : !tutorOpen;
+  tutorialPanel.classList.toggle('hidden', !tutorOpen);
+  document.body.classList.toggle('tutor-open', tutorOpen);
+  setTimeout(() => { highway.resize(); sheet.resize(); }, 50);
+}
+
 btnCoach.onclick = () => toggleCoach();
 btnCoachClose.onclick = () => toggleCoach(false);
 btnCoachSend.onclick = () => {
@@ -510,6 +528,8 @@ coachInput.addEventListener('keydown', (e) => {
 document.querySelectorAll('#coach-chips button').forEach((b) => {
   b.onclick = () => coachAsk(b.dataset.q);
 });
+
+el.tutorialBtn.onclick = () => toggleTutorial();
 
 el.tempoNum.onchange = () => {
   el.tempoRange.value = el.tempoNum.value;
@@ -536,6 +556,49 @@ audio.onEnded = () => {
   el.play.textContent = '▶ Play';
   if (settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
 };
+
+// Tutorial section content
+const tutorialSections = {
+  basic: `
+    <h3>Dasar-dasar Kontrol Tangan</h3>
+    <ol>
+      <li>Paham subdivision: 16th notes (\$1\text{ e \& a}\$) dan sextuplet</li>
+      <li>Latihan dengan metronom lambat (60-70 BPM)</li>
+      <li>Kontrol fundamental rudiment: Single Stroke, Double Stroke, Paradiddle</li>
+      <li>Flam & Herta sebagai variasi bumbu</li>
+    </ol>`,
+  timing: `
+    <h3>Timing & Rhythm</h3>
+    <ol>
+      <li>Subdivision Seperenam Belas & Sextuplet</li>
+      <li>Chops berbasis ketukan yang terbagi presisi</li>
+      <li>Pelajari rasa ketukan 16th notes dan Sextuplets</li>
+      <li>Jalankan dengan metronom lambat (60-70 BPM)</li>
+    </ol>`,
+  techniques: `
+    <h3>Teknik Spesifik Drum</h3>
+    <ol>
+      <li>Single Stroke (N K N K): Kecepatan dan kelenturan dasar</li>
+      <li>Double Stroke (N N K K): Kontrol pantulan stik (rebound)</li>
+      <li>Paradiddle (N K N N - K N K K): Transisi arah tangan mulus</li>
+      <li>Flam & Herta: Variasi aksen sebagai bumpu utama</li>
+      <li>Hand-Foot Coordination: Integrasi Bass Drum dengan tangan</li>
+      <li>Pola Linear: N K K, N K N K, N K K N K K</li>
+      <li>Orchestration: Distribusi ke tom-tom dan cymbal</li>
+      <li>Chops Populer: Pola 16th Notes dan Triplet/Sextuplet</li>
+    </ol>`
+};
+
+function showTutorialSection(section) {
+  document.getElementById('tutorial-text').innerHTML = tutorialSections[section] || '';
+}
+
+document.querySelectorAll('#tutorial-section button').forEach((b) => {
+  b.onclick = () => showTutorialSection(b.dataset.section);
+});
+
+// Initialize with first section
+document.querySelectorAll('#tutorial-section button')[0]?.click();
 el.play.textContent = '▶ Play';
 
 setupMidi();

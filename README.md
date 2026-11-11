@@ -24,14 +24,16 @@ Keyboard fallback (buat tes tanpa hardware): `J` kick, `F` snare, `D` hi-hat, `S
 ## Fitur latihan
 
 - **Tempo practice 25–150%**: isi angka atau geser slider di topbar. Pitch tetap (time-stretch), timing scoring & notes ikut menyesuaikan. Tempo tersimpan otomatis.
-- **AI Coach**: klik `Coach` (kanan atas) buat panel ngobrol. Default: coach engine lokal yang analisa data kamu sungguhan (akurasi per lane, rata-rata timing telat/cepat, combo, pukulan di luar chart) — jalan tanpa internet.
+- **AI Coach**: klik `Coach` (kanan atas) buat panel ngobrol. Default: coach engine lokal yang analisa data kamu sungguhan (akurasi per lane, rata-rata timing telat/cepat, combo, pukulan di luar chart) — jalan tanpa internet. ^1^
 - **LLM via Ollama (opsional)**: centang `LLM lokal` di bawah panel coach, app auto-detect Ollama di `http://localhost:11434` dan tampilkan daftar model. Kalau Ollama mati/gak bisa reach, otomatis fallback ke coach lokal. Cara install:
+- **Fitur coach baru**: Coach sekarang bisa melaporkan skor pukulan yang missed (terlalu cepat/slow), melacak lagu yang sudah diputar, dan memberikan statistik timing. Gunakan chip di panel coach: "analisa sesi", "tips timing", "lane terlemah", "saran tempo", "motivasi dong". ^2^
   ```powershell
   # di Windows
   ollama serve
   ollama pull llama3.1:8b
   ```
   Ollama default CORS sudah mengizinkan origin `localhost:*`, jadi gak perlu opsi tambahan. Keputusan desain: coach lokal tetap jadi fallback — app gak pernah mat gara-gara LLM.
+- **Tutorial/Course**: klik `Tutorial` (di sebelah kanan Tombol Coach) buat buka panel tutorial. Panel ini bisa di-minimize/maximize. Terdiri dari 3 section: Dasar-dasar, Timing & Rhythm, dan Teknik Spesifik. Konten tutorial bisa di-update berkala dalam format Markdown. ^3^
 
 ## Dua mode tampilan
 
@@ -62,3 +64,28 @@ Toggle pakai tombol di topbar atau shortcut **M**. Mode disimpan di localStorage
 - Web MIDI: Chrome/Edge/Firefox desktop ✅, Safari/iOS ❌.
 - Latency: Web MIDI hit umumnya responsif, tapi kalau skor kerasa "telat", atur Sync slider.
 - Semua 100% client-side, gak ada upload ke mana-mana.
+
+---
+
+### Catatan Fitur Coach
+
+^1^ Coach lokal sekarang mencakup:
+- **Laporkan akurasi per lane** dan timing rata-rata (perfect/terlalu cepat/terlalu lambat)
+- **Skor pukulan missed** dengan prosentase akurasi
+- **Lagu yang diputar** dan riwayat session
+- **Saran tempo** yang disesuaikan dengan performa
+
+^2^ Chip di panel coach:
+- `analisa sesi` — laporan lengkap sesi latihan
+- `tips timing` — masukan tentang konsistensi timingmu
+- `lane terlemah` — lane mana yang butuh latihan
+- `saran tempo` — rekomendasi tempo berdasarkan akurasi
+- `motivasi dong` — pesan semangat berdasarkan skor
+
+^3^ Tutorial/Course: panel bisa di-toggle dengan tombol `Tutorial` di sebelah kanan Coach. Terdiri dari 3 section:
+- `Dasar-dasar` — fundament kontrol tangan, rudiment, dan koordinasi tangan-kaki
+- `Timing & Rhythm` — subdivision 16th notes & sextuplet, latihan dengan metronom
+- `Teknik Spesifik` — rudiment dasar, hand-foot coordination, chops populer
+Konten bisa di-update berkala dalam format Markdown dan ditumpuk di dalam panel tutorial.
+
+^3^ LLM via Ollama/bridge (opional): kalau sudah dikonfigurasi, coach bisa memakai model lokal (Ollama) atau CLI (OpenCode/Claude/Codex) untuk response yang lebih canggih. Tetap ada fallback ke coach lokal kalau LLM gagal.

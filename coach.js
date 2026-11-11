@@ -9,17 +9,36 @@ const LANE_NAMES = {
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+const TIMING_CLASS = {
+  perfect: 'sempurna',
+  fast: 'terlalu cepat',
+  slow: 'terlalu lambat',
+};
+
+function classifyDelta(deltaMs) {
+  const abs = Math.abs(deltaMs);
+  if (abs <= 20) return TIMING_CLASS.perfect;
+  if (deltaMs > 0) return TIMING_CLASS.fast;
+  return TIMING_CLASS.slow;
+}
+
 export function createCoach() {
   let lanes = {};
   let maxCombo = 0;
   let combo = 0;
   let strays = 0;
+  let songHistory = [];
+  let currentSongTitle = '';
+  let sessionStats = { hits: [], missedLanes: [], misses: [] };
 
   function reset() {
     lanes = {};
     maxCombo = 0;
     combo = 0;
     strays = 0;
+    songHistory = [];
+    currentSongTitle = '';
+    sessionStats = { hits: [], missedLanes: [], misses: [] };
   }
 
   function laneStats(id) {
@@ -39,16 +58,48 @@ export function createCoach() {
       s.miss++;
       combo = 0;
     }
+    recordAttempt({ id, ok, deltaMs });
   }
 
   function onMiss(id) {
     if (id) laneStats(id).miss++;
     combo = 0;
+    recordMiss(id);
   }
 
   function onGhost() {
     strays++;
     combo = 0;
+  }
+
+  function recordAttempt(attempt) {
+    if (!attempt.ok && attempt.deltaMs !== undefined) {
+      const timing = classifyDelta(attempt.deltaMs);
+      sessionStats.misses.push({ lane: attempt.id, timing });
+    }
+    if (attempt.ok) sessionStats.hits.push(attempt.id);
+  }
+
+  function recordMiss(id) {
+    sessionStats.missedLanes.push(id);
+    // Ensure lane stats exist, then track timing from deltas if available
+    if (!lanes[id]) lanes[id] = { hit: 0, miss: 0, deltas: [] };
+    const s = lanes[id];
+    if (s && s.deltas.length > 0) {
+      const lastDelta = s.deltas[s.deltas.length - 1];
+      const timing = classifyDelta(lastDelta);
+      sessionStats.misses.push({ lane: id, timing });
+    }
+  }
+
+  function setSong(title) {
+    currentSongTitle = title;
+    songHistory.push({ title, timestamp: new Date().toISOString() });
+    if (songHistory.length > 20) songHistory = songHistory.slice(-20);
+  }
+
+  function getSongInfo() {
+    return { title: currentSongTitle, history: songHistory };
   }
 
   function totalAttempts() {
@@ -244,5 +295,16 @@ export function createCoach() {
     return 'Aku paham soal: analisa sesi, tips timing, lane terlemah, saran tempo, atau teknik lane tertentu (kick/snare/hi-hat/tom/crash/ride).\nCoba tanya salah satunya.';
   }
 
-  return { reset, onAttempt, onMiss, onGhost, reply, greeting, summarizeOnEnd, accuracy, contextSummary, combo: () => combo, maxCombo: () => maxCombo, hasData: () => { const { hit, miss } = totalAttempts(); return hit + miss >= 10; } };
+  return { reset, onAttempt, onMiss, onGhost, reply, greeting, summarizeOnEnd, accuracy, contextSummary, combo: () => combo, maxCombo: () => maxCombo, hasData: () => { const { hit, miss } = totalAttempts(); return hit + miss >= 10; }, setSong, getSongInfo, songHistory, currentSongTitle, sessionStats, getTimingStats: () => {
+    const misses = sessionStats.misses;
+    const byTiming = { perfect: 0, fast: 0, slow: 0 };
+    misses.forEach(m => { byTiming[m.timing] = (byTiming[m.timing] || 0) + 1; });
+    // Also consider missed lanes that don't have delta timing
+    const missedWithoutTiming = sessionStats.missedLanes.length - misses.length;
+    return { 
+      totalMisses: sessionStats.missedLanes.length, 
+      byTiming: { ...byTiming, 'without-timing': missedWithoutTiming },
+      total: misses.length + missedWithoutTiming 
+    };
+  }, scoreMissed: () => { const { hit, miss } = totalAttempts(); return { total: hit + miss, missed: miss, accuracy: miss > 0 ? Math.round(hit / (hit + miss) * 100) : 100 }; }, getSongInfo: () => ({ title: currentSongTitle, history: songHistory }) };
 }
