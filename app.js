@@ -338,6 +338,10 @@ const elSettings = {
   bridgeCheck: document.getElementById('btn-bridge-check'),
   test: document.getElementById('btn-llm-test'),
   testResult: document.getElementById('llm-test-result'),
+  audioTempo: document.getElementById('set-tempo'),
+  audioSync: document.getElementById('set-sync'),
+  audioVolume: document.getElementById('set-volume'),
+  audioPage: document.getElementById('page-audio'),
 };
 
 let cfg = {};
@@ -437,9 +441,37 @@ function initSettings() {
   elSettings.ollamaBase.value = cfg.ollamaBase || 'http://localhost:11434';
   elSettings.bridgeBase.value = cfg.bridgeBase || 'http://127.0.0.1:3232';
   elSettings.model.value = cfg.model === '(default)' ? '' : (cfg.model || '');
+  elSettings.audioTempo.value = cfg.tempo || 100;
+  elSettings.audioSync.value = cfg.sync || 0;
+  elSettings.audioVolume.value = cfg.volume || 1;
   applyProviderVisibility();
   refreshProviderStatus();
 }
+
+elSettings.audioTempo.onchange = () => {
+  const val = elSettings.audioTempo.value;
+  cfg.tempo = parseInt(val);
+  saveCfg();
+  applyRate(val / 100);
+};
+
+elSettings.audioSync.oninput = () => {
+  const val = elSettings.audioSync.value;
+  document.getElementById('set-sync-value').textContent = val + 'ms';
+  cfg.sync = parseInt(val);
+  saveCfg();
+  // Apply sync offset to audio
+  el.offset.value = val;
+  el.offsetVal.textContent = (val > 0 ? '+' : '') + val + 'ms';
+};
+
+elSettings.audioVolume.oninput = () => {
+  const val = parseFloat(elSettings.audioVolume.value);
+  cfg.volume = val;
+  saveCfg();
+  // Apply volume to audio context
+  audio.volume = val;
+};
 
 elSettings.open.onclick = () => { initSettings(); settingsOverlay.classList.remove('hidden'); };
 elSettings.close.onclick = () => settingsOverlay.classList.add('hidden');
@@ -450,6 +482,7 @@ elSettings.nav.onclick = (e) => {
   elSettings.nav.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
   document.getElementById('page-assistant').classList.toggle('hidden', b.dataset.page !== 'assistant');
   document.getElementById('page-provider').classList.toggle('hidden', b.dataset.page !== 'provider');
+  document.getElementById('page-audio').classList.toggle('hidden', b.dataset.page !== 'audio');
 };
 
 elSettings.provider.onchange = () => {
