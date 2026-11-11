@@ -432,7 +432,6 @@ elSettings.provider.onchange = () => {
   refreshProviderStatus();
 };
 
-elSettings.tutorialBtn.onclick = () => { initSettings(); tutorialPanel.classList.remove('hidden'); };
 document.getElementById('tutorial-close').onclick = () => tutorialPanel.classList.add('hidden');
 settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden'); });
 elSettings.nav.onclick = (e) => {
@@ -490,6 +489,7 @@ async function coachAsk(text) {
 }
 
 let coachOpen = false;
+let tutorOpen = false;
 
 function coachSay(text, who = 'ai') {
   const div = document.createElement('div');
@@ -593,12 +593,12 @@ function showTutorialSection(section) {
   document.getElementById('tutorial-text').innerHTML = tutorialSections[section] || '';
 }
 
-document.querySelectorAll('#tutorial-section button').forEach((b) => {
+document.querySelectorAll('#tutorial-content button').forEach((b) => {
   b.onclick = () => showTutorialSection(b.dataset.section);
 });
 
 // Initialize with first section
-document.querySelectorAll('#tutorial-section button')[0]?.click();
+document.querySelectorAll('#tutorial-content button')[0]?.click();
 el.play.textContent = '▶ Play';
 
 setupMidi();
