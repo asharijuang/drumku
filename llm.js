@@ -10,7 +10,7 @@ export function defaultConfig() {
   return {
     provider: 'local',
     ollamaBase: 'http://localhost:11434',
-    bridgeBase: 'http://127.0.0.1:3232',
+    bridgeBase: '',
     model: '',
   };
 }
@@ -21,13 +21,18 @@ async function fetchJson(url, opts = {}, timeout = 5000) {
   return res.json();
 }
 
+function bridgeUrl(cfg, endpoint) {
+  const base = cfg.bridgeBase || globalThis.location?.origin || 'http://127.0.0.1:3232';
+  return base.replace(/\/$/, '') + endpoint;
+}
+
 export async function listModels(cfg) {
   if (cfg.provider === 'ollama') {
     const json = await fetchJson(cfg.ollamaBase.replace(/\/$/, '') + '/api/tags');
     return (json.models || []).map((m) => m.name);
   }
   if (cfg.provider === 'local') return [];
-  const status = await fetchJson(cfg.bridgeBase.replace(/\/$/, '') + '/status');
+  const status = await fetchJson(bridgeUrl(cfg, '/status'));
   if (status[cfg.provider] !== true) {
     const avail = Object.keys(status).filter((p) => status[p]);
     throw new Error('CLI ' + cfg.provider + ' tidak terpasang di bridge' + (avail.length ? ' (tersedia: ' + avail.join(', ') + ')' : '') + ' — coach lokal tetap jalan. Jalankan: node bridge.js');
@@ -47,7 +52,7 @@ export async function chat(cfg, messages) {
   }
   let json;
   try {
-    json = await fetchJson(cfg.bridgeBase.replace(/\/$/, '') + '/v1/chat', {
+    json = await fetchJson(bridgeUrl(cfg, '/v1/chat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: cfg.provider, model: cfg.model === '(default)' ? '' : cfg.model, messages }),

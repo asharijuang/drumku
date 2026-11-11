@@ -10,6 +10,13 @@ import { buildGroove, GROOVE_GENRES } from './groove.js';
 
 const audio = createAudio();
 const canvas = document.getElementById('highway');
+const musicPanel = document.getElementById('music-panel');
+const youtubeResults = document.getElementById('youtube-results');
+const chordContent = document.getElementById('chord-content');
+let youtubePlayer = null;
+let youtubeApiReady = false;
+let activeYoutube = null;
+let youtubeReadyPromise = null;
 const highway = createHighway(canvas, {});
 const sheet = createSheet(canvas);
 const coach = createCoach();
@@ -96,6 +103,8 @@ function setChart(rawNotes, name, beats) {
 }
 
 async function loadAudioFile(file) {
+  if (activeYoutube && youtubePlayer) youtubePlayer.pauseVideo();
+  activeYoutube = null;
   showLoading('Decoding audio…');
   try {
     await audio.loadFile(file);
@@ -119,6 +128,8 @@ async function loadMidiFile(file) {
 }
 
 async function startDemo() {
+  if (activeYoutube && youtubePlayer) youtubePlayer.pauseVideo();
+  activeYoutube = null;
   showLoading('Generating demo…');
   try {
     const { buffer, chart: demoChart } = await generateDemoSong();
@@ -133,11 +144,137 @@ async function startDemo() {
   hideLoading();
 }
 
+function youtubeId(value) {
+  try {
+    const raw = String(value).trim();
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    let id = null;
+    if (url.hostname.endsWith('youtu.be')) id = url.pathname.slice(1).split('/')[0];
+    if (!id && url.searchParams.get('v')) id = url.searchParams.get('v');
+    const parts = url.pathname.split('/');
+    const embedAt = parts.findIndex((part) => ['embed', 'shorts', 'live'].includes(part));
+    if (!id && embedAt >= 0) id = parts[embedAt + 1];
+    return /^[\w-]{11}$/.test(id || '') ? id : null;
+  } catch { return null; }
+}
+
+function ensureYoutubeApi() {
+  if (youtubeApiReady) return Promise.resolve();
+  if (youtubeReadyPromise) return youtubeReadyPromise;
+  youtubeReadyPromise = new Promise((resolve) => {
+    window.onYouTubeIframeAPIReady = () => {
+      youtubeApiReady = true;
+      resolve();
+    };
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(script);
+  });
+  return youtubeReadyPromise;
+}
+
+async function openYoutube(id, title = 'YouTube video') {
+  activeYoutube = { id, title };
+  audio.pause();
+  el.audioName.textContent = title;
+  musicPanel.classList.remove('hidden');
+  document.body.classList.add('music-open');
+  document.getElementById('youtube-player-wrap').classList.remove('hidden');
+  await ensureYoutubeApi();
+  if (!youtubePlayer) {
+    youtubePlayer = new YT.Player('youtube-player', {
+      videoId: id,
+      playerVars: { playsinline: 1, origin: location.origin },
+      events: {
+        onReady: (event) => event.target.cueVideoById(id),
+        onStateChange: (event) => {
+          el.play.textContent = event.data === YT.PlayerState.PLAYING ? '⏸ Pause' : '▶ Play';
+          if (event.data === YT.PlayerState.ENDED && coachMode && settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
+        },
+      },
+    });
+  } else youtubePlayer.cueVideoById(id);
+}
+
+async function searchYoutube(query, intoChat = false) {
+  query = query.trim();
+  if (!query) return;
+  const directId = youtubeId(query);
+  if (directId) { await openYoutube(directId); return; }
+  youtubeResults.textContent = 'Mencari…';
+  try {
+    const response = await fetch(`${bridgeUrl('/youtube/search')}?q=${encodeURIComponent(query)}`);
+    const body = await response.text();
+    let data;
+    try { data = JSON.parse(body); }
+    catch { throw new Error(`Server mengembalikan ${response.status}: ${body.slice(0, 160)}`); }
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    youtubeResults.replaceChildren();
+    if (intoChat) coachSay(`Hasil pencarian YouTube untuk “${query}”:`);
+    for (const item of data.items || []) {
+      const id = item.id.videoId;
+      const title = item.snippet.title;
+      const button = document.createElement('button');
+      button.className = 'youtube-result';
+      const image = document.createElement('img');
+      image.src = item.snippet.thumbnails?.default?.url || '';
+      image.alt = '';
+      const label = document.createElement('span');
+      label.textContent = `${title} · ${item.snippet.channelTitle}`;
+      button.append(image, label);
+      button.onclick = () => openYoutube(id, title);
+      youtubeResults.appendChild(button);
+      if (intoChat) {
+        const card = document.createElement('button');
+        card.className = 'coach-msg ai youtube-result';
+        card.textContent = `▶ ${title} — ${item.snippet.channelTitle}`;
+        card.onclick = () => openYoutube(id, title);
+        coachMsgs.appendChild(card);
+      }
+    }
+    if (!data.items?.length) youtubeResults.textContent = 'Tidak ada hasil yang bisa diputar di embed.';
+    coachMsgs.scrollTop = coachMsgs.scrollHeight;
+  } catch (error) {
+    youtubeResults.textContent = error.message.includes('fetch')
+      ? 'Jalankan bridge dengan: node bridge.js'
+      : error.message;
+    if (intoChat) coachSay(youtubeResults.textContent);
+  }
+}
+
+function setChordTimeline(text) {
+  chordContent.replaceChildren();
+  for (const line of text.split('\n')) {
+    const row = document.createElement('div');
+    row.className = 'chord-line';
+    row.textContent = line;
+    const match = line.match(/(?:\[)?(\d{1,2}):(\d{2})(?:\])?/);
+    row.dataset.time = match ? String(Number(match[1]) * 60 + Number(match[2])) : '';
+    chordContent.appendChild(row);
+  }
+  updateChordAt(mediaTime());
+}
+
+function updateChordAt(time) {
+  let active = null;
+  chordContent.querySelectorAll('.chord-line').forEach((row) => {
+    const at = Number(row.dataset.time);
+    if (row.dataset.time !== '' && at <= time) active = row;
+    row.classList.remove('active');
+  });
+  if (active) active.classList.add('active');
+}
+
 function hasAudio() {
   return audio.duration() > 0;
 }
 
 function togglePlay() {
+  if (activeYoutube && youtubePlayer) {
+    if (youtubePlayer.getPlayerState() === 1) youtubePlayer.pauseVideo();
+    else youtubePlayer.playVideo();
+    return;
+  }
   if (!audio.playing && !hasAudio()) {
     el.midiStatus.textContent = 'Load audio dulu, atau tekan Demo song';
     return;
@@ -157,7 +294,16 @@ function updateScore() {
 }
 
 function visualTime() {
-  return audio.currentTime() - (+el.offset.value) / 1000;
+  const sourceTime = activeYoutube && youtubePlayer ? youtubePlayer.getCurrentTime() : audio.currentTime();
+  return sourceTime - (+el.offset.value) / 1000;
+}
+
+function mediaTime() { return activeYoutube && youtubePlayer ? youtubePlayer.getCurrentTime() : audio.currentTime(); }
+function mediaDuration() { return activeYoutube && youtubePlayer ? youtubePlayer.getDuration() : audio.duration(); }
+function mediaPlaying() { return activeYoutube && youtubePlayer ? youtubePlayer.getPlayerState() === 1 : audio.playing; }
+function seekMedia(delta) {
+  if (activeYoutube && youtubePlayer) youtubePlayer.seekTo(Math.max(0, Math.min(mediaDuration(), mediaTime() + delta)), true);
+  else audio.seek(audio.currentTime() + delta);
 }
 
 function markMisses(target) {
@@ -166,7 +312,7 @@ function markMisses(target) {
     if (!n.judged) {
       n.judged = 'miss';
       combo = 0;
-      coach.onMiss(n.lane);
+      if (coachMode) coach.onMiss(n.lane);
       updateScore();
     }
     scanIdx++;
@@ -194,12 +340,12 @@ function judge(hitLane) {
       best.judged = 'hit';
       combo++;
       score += combo >= 8 ? 150 : 100;
-      coach.onAttempt(hitLane, true, ((best.tw ?? best.t) - target) * 1000);
+      if (coachMode) coach.onAttempt(hitLane, true, ((best.tw ?? best.t) - target) * 1000);
       highway.addHitFlash(hitLane);
       sheet.addHitFlash(hitLane);
     } else {
       combo = 0;
-      coach.onGhost();
+      if (coachMode) coach.onGhost();
       highway.addFeedback('×', '#ff5252', canvas.clientWidth / 2);
       sheet.addFeedback('×', '#ff5252', 0);
     }
@@ -220,11 +366,11 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'ArrowRight') {
-    audio.seek(audio.currentTime() + 2);
+    seekMedia(2);
     return;
   }
   if (e.key === 'ArrowLeft') {
-    audio.seek(audio.currentTime() - 2);
+    seekMedia(-2);
     return;
   }
   if (e.key.toLowerCase() === 'm') {
@@ -278,6 +424,19 @@ el.tutorialBtn.onclick = () => toggleTutorial();
 el.device.onclick = () => setupMidi();
 
 const coachPanel = document.getElementById('coach-panel');
+const coachModeToggle = document.getElementById('coach-mode-toggle');
+let coachMode = localStorage.getItem('coach-mode') !== 'off';
+function syncCoachMode() {
+  coachModeToggle.textContent = coachMode ? 'Pantau: ON' : 'Chat saja';
+  coachModeToggle.setAttribute('aria-pressed', String(coachMode));
+  coachModeToggle.title = coachMode ? 'Coach memantau pukulan selama lagu' : 'Chat saja; pantauan dan ringkasan sesi dimatikan';
+}
+coachModeToggle.onclick = () => {
+  coachMode = !coachMode;
+  localStorage.setItem('coach-mode', coachMode ? 'on' : 'off');
+  syncCoachMode();
+};
+syncCoachMode();
 const coachMsgs = document.getElementById('coach-msgs');
 const coachInput = document.getElementById('coach-input');
 const btnCoach = document.getElementById('btn-coach');
@@ -298,7 +457,10 @@ function addResizer(panel, side) {
     const sx = e.clientX, sw = panel.offsetWidth;
     const move = (ev) => {
       const d = side === 'left' ? sx - ev.clientX : ev.clientX - sx;
-      panel.style.width = Math.max(240, Math.min(window.innerWidth - 40, sw + d)) + 'px';
+      const otherPanel = panel === coachPanel ? tutorialPanel : coachPanel;
+      const otherWidth = otherPanel.classList.contains('hidden') ? 0 : otherPanel.offsetWidth;
+      const maxWidth = Math.max(240, window.innerWidth - otherWidth - 240);
+      panel.style.width = Math.max(240, Math.min(maxWidth, sw + d)) + 'px';
     };
     const up = () => {
       document.removeEventListener('mousemove', move);
@@ -310,6 +472,18 @@ function addResizer(panel, side) {
 }
 addResizer(coachPanel, 'right'); // docked left, grows right
 addResizer(tutorialPanel, 'left'); // docked right, grows left
+
+// Keep the playfield fitted between the side panels, including while dragging.
+const syncPlayfield = () => {
+  document.documentElement.style.setProperty('--coach-width', `${coachPanel.offsetWidth}px`);
+  document.documentElement.style.setProperty('--tutorial-width', `${tutorialPanel.offsetWidth}px`);
+  highway.resize();
+  sheet.resize();
+};
+const playfieldObserver = new ResizeObserver(syncPlayfield);
+playfieldObserver.observe(coachPanel);
+playfieldObserver.observe(tutorialPanel);
+syncPlayfield();
 
 // Keep side panels below the (wrapping) topbar so its buttons stay clickable.
 const topbarEl = document.getElementById('topbar');
@@ -350,6 +524,11 @@ try {
   cfg = { ...defaultConfig(), ...JSON.parse(localStorage.getItem('llmCfg') || '{}') };
 } catch (e) {
   cfg = defaultConfig();
+}
+// Older settings pointed at localhost from inside Linux; the browser may be on Windows.
+if (['http://127.0.0.1:3232', 'http://localhost:3232'].includes(cfg.bridgeBase)) cfg.bridgeBase = '';
+function bridgeUrl(endpoint) {
+  return (cfg.bridgeBase || location.origin).replace(/\/$/, '') + endpoint;
 }
 function saveCfg() {
   localStorage.setItem('llmCfg', JSON.stringify(cfg));
@@ -406,7 +585,7 @@ async function bridgeCheck() {
   elSettings.bridgeStatus.textContent = 'mengecek…';
   let status;
   try {
-    const res = await fetch((cfg.bridgeBase || 'http://127.0.0.1:3232') + '/status', { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(bridgeUrl('/status'), { signal: AbortSignal.timeout(5000) });
     status = await res.json();
   } catch (e) {
     elSettings.bridgeStatus.textContent = '✕ Bridge mati — ' + (PROVIDER_LABEL[cfg.provider] || cfg.provider) + ' tidak bisa dipakai (coach lokal tetap jalan). Nyalakan: node bridge.js';
@@ -446,7 +625,7 @@ function initSettings() {
   elSettings.insight.checked = settingsState.insight();
   elSettings.autoSum.checked = settingsState.autoSum();
   elSettings.ollamaBase.value = cfg.ollamaBase || 'http://localhost:11434';
-  elSettings.bridgeBase.value = cfg.bridgeBase || 'http://127.0.0.1:3232';
+  elSettings.bridgeBase.value = cfg.bridgeBase || location.origin;
   elSettings.model.value = cfg.model === '(default)' ? '' : (cfg.model || '');
   elSettings.audioTempo.value = cfg.tempo || 100;
   elSettings.audioSync.value = cfg.sync || 0;
@@ -469,6 +648,7 @@ elSettings.audioSync.oninput = () => {
   document.getElementById('set-sync-value').textContent = val + 'ms';
   cfg.sync = parseInt(val);
   saveCfg();
+  localStorage.setItem('offset', val);
   el.offset.value = val;
   el.offsetVal.textContent = (val > 0 ? '+' : '') + val + 'ms';
 };
@@ -510,10 +690,52 @@ elSettings.autoSum.onchange = () => { cfg.autoSummary = elSettings.autoSum.check
 elSettings.ollamaBase.onchange = () => { cfg.ollamaBase = elSettings.ollamaBase.value.trim() || 'http://localhost:11434'; saveCfg(); ollamaDetect(); };
 elSettings.ollamaDetect.onclick = ollamaDetect;
 elSettings.ollamaModel.onchange = () => { cfg.model = elSettings.ollamaModel.value; saveCfg(); refreshProviderStatus(); };
-elSettings.bridgeBase.onchange = () => { cfg.bridgeBase = elSettings.bridgeBase.value.trim() || 'http://127.0.0.1:3232'; saveCfg(); };
+elSettings.bridgeBase.onchange = () => { cfg.bridgeBase = elSettings.bridgeBase.value.trim() === location.origin ? '' : elSettings.bridgeBase.value.trim(); saveCfg(); };
 elSettings.model.onchange = () => { cfg.model = elSettings.model.value.trim(); saveCfg(); refreshProviderStatus(); };
 elSettings.bridgeCheck.onclick = bridgeCheck;
 elSettings.test.onclick = testProvider;
+
+// ---- Config backup (export/import JSON) ----
+elSettings.cfgExport = document.getElementById('btn-cfg-export');
+elSettings.cfgImport = document.getElementById('btn-cfg-import');
+const cfgFile = document.getElementById('cfg-file');
+elSettings.cfgExport.onclick = () => {
+  const data = {
+    llmCfg: cfg,
+    rate: +(localStorage.getItem('rate') || 100),
+    mode: localStorage.getItem('mode') || 'highway',
+    offset: +(localStorage.getItem('offset') || 0),
+    sessions: (() => { try { return JSON.parse(localStorage.getItem('coachSessions') || '[]'); } catch { return []; } })(),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = 'drum-config.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+elSettings.cfgImport.onclick = () => cfgFile.click();
+cfgFile.onchange = () => {
+  const f = cfgFile.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      if (data.llmCfg) { cfg = { ...defaultConfig(), ...data.llmCfg }; saveCfg(); }
+      if (data.rate) { rate = +data.rate / 100; localStorage.setItem('rate', +data.rate); audio.setRate(rate); }
+      if (data.offset !== undefined) { localStorage.setItem('offset', +data.offset || 0); el.offset.value = +data.offset || 0; el.offsetVal.textContent = (+data.offset > 0 ? '+' : '') + (+data.offset || 0) + 'ms'; }
+      if (data.mode) { localStorage.setItem('mode', data.mode); setMode(data.mode); }
+      if (Array.isArray(data.sessions) && data.sessions.length) { sessions = data.sessions; saveSessions(); openSession(sessions[0].id); }
+      initSettings();
+      refreshProviderStatus();
+      elSettings.testResult.textContent = '✓ config dimuat';
+    } catch (e) {
+      elSettings.testResult.textContent = '✕ file tidak valid: ' + e.message;
+    }
+  };
+  r.readAsText(f);
+  cfgFile.value = '';
+};
 
 document.getElementById('llm-open-settings').onclick = elSettings.open.onclick;
 
@@ -530,7 +752,7 @@ async function askLlm(text) {
     {
       role: 'system',
       content: 'Kamu coach drum pribadi dalam web app latihan drum ala Guitar Hero. Bahasa Indonesia. ' + toneText +
-        ' Jawaban singkat (maksimal ~150 kata), langsung ke inti, TIDAK memakai markdown. Beri drill konkret. GM drum map: kick/snare/hi-hat/tom/crash/ride.',
+        ' Jawaban singkat (maksimal ~150 kata), langsung ke inti. Bila diminta chord, berikan chord per bagian dengan timestamp [mm:ss] di tiap baris agar bisa disorot saat audio berjalan, plus saran strumming; jangan mengarang lirik. Gunakan judul video aktif jika relevan. GM drum map: kick/snare/hi-hat/tom/crash/ride.',
     },
     {
       role: 'system',
@@ -550,7 +772,8 @@ async function askLlm(text) {
 function platformState() {
   const parts = [
     'mode=' + mode,
-    'status=' + (audio.playing ? 'main' : 'berhenti'),
+    'status=' + (mediaPlaying() ? 'main' : 'berhenti'),
+    'video_youtube=' + (activeYoutube?.title || '(tidak ada)'),
     'tempo=' + Math.round(rate * 100) + '%',
     'lagu=' + (coach.currentSongTitle || coach.getSongInfo().title || '(belum ada)'),
     'notes_di_chart=' + chart.length,
@@ -595,12 +818,17 @@ async function execDrumCommand(cmd) {
 
 async function coachAsk(text) {
   coachSay(text, 'me');
+  const ytUrl = text.match(/https?:\/\/[^\s]+/i);
+  if (ytUrl && youtubeId(ytUrl[0])) { await openYoutube(youtubeId(ytUrl[0])); coachSay('Video YouTube dibuka. Minta chord lagu ini kapan saja.'); return; }
+  const searchIntent = text.match(/^(?:cari|search)(?: video| lagu)?\s+(.+)$/i);
+  if (searchIntent) { await searchYoutube(searchIntent[1], true); return; }
   if (providerActive()) {
     const thinking = coachSay('…', 'ai', false);
     try {
       const answer = await askLlm(text);
       const { clean, results } = await runDrumCommands(answer);
       const shown = clean || '(oke)';
+      if (activeYoutube && /chord|akor/i.test(text)) setChordTimeline(shown);
       thinking.textContent = shown;
       pushMsg('ai', shown);
       results.forEach((r) => {
@@ -657,6 +885,8 @@ function coachArtifact(spec, text, save = true) {
 
 // Build + render audio for a groove spec and load it onto the main screen.
 async function loadGrooveArtifact(spec) {
+  if (activeYoutube && youtubePlayer) youtubePlayer.pauseVideo();
+  activeYoutube = null;
   const bpm = Math.max(40, Math.min(220, Math.round(spec.bpm) || 90));
   const raw = buildGroove({ genre: spec.genre, bpm, bars: spec.bars });
   const title = spec.title || `${spec.genre || 'rock'} ${bpm}bpm`;
@@ -684,7 +914,7 @@ function pushMsg(who, text, artifact) {
   if (!curSession) return;
   curSession.msgs.push(artifact ? { who, text, artifact } : { who, text });
   if (curSession.title === 'Sesi baru' && who === 'me') {
-    curSession.title = text.slice(0, 40);
+    curSession.title = text.replace(/\s+/g, ' ').trim().slice(0, 40) || 'Sesi baru';
     renderSessionList();
   }
   saveSessions();
@@ -694,7 +924,7 @@ function startSession() {
   sessions.unshift(curSession);
   coachMsgs.innerHTML = '';
   llmHistory = [];
-  coachSay(coach.greeting(), 'ai');
+  coachSay(coach.greeting(coachMode), 'ai');
   saveSessions();
   renderSessionList();
   coachSessionList.classList.add('hidden');
@@ -722,19 +952,52 @@ function deleteSession(id) {
 }
 function renderSessionList() {
   coachSessionList.innerHTML = '';
-  sessions.forEach((s) => {
+  const sorted = [...sessions].sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.created - a.created));
+  sorted.forEach((s) => {
     const row = document.createElement('div');
-    row.className = 'sess-row' + (curSession && s.id === curSession.id ? ' active' : '');
+    row.className = 'sess-row' + (curSession && s.id === curSession.id ? ' active' : '') + (s.pinned ? ' pinned' : '');
     const t = document.createElement('span');
     t.className = 'sess-title';
-    t.textContent = s.title || 'Sesi baru';
+    t.textContent = (s.pinned ? '📌 ' : '') + (s.title || 'Sesi baru');
+    t.title = s.title || 'Sesi baru';
     t.onclick = () => openSession(s.id);
+    const pin = document.createElement('button');
+    pin.className = 'sess-act';
+    pin.textContent = s.pinned ? '📌' : '📍';
+    pin.title = s.pinned ? 'Lepas pin' : 'Pin sesi';
+    pin.onclick = (e) => { e.stopPropagation(); s.pinned = !s.pinned; saveSessions(); renderSessionList(); };
+    const edit = document.createElement('button');
+    edit.className = 'sess-act';
+    edit.textContent = '✏';
+    edit.title = 'Ganti judul';
+    edit.onclick = (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.className = 'sess-input';
+      input.value = s.title || '';
+      input.maxLength = 60;
+      t.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const v = input.value.trim();
+        if (v) s.title = v;
+        saveSessions();
+        renderSessionList();
+      };
+      input.onkeydown = (ev) => {
+        if (ev.key === 'Enter') input.blur();
+        else if (ev.key === 'Escape') { input.value = s.title || ''; input.blur(); }
+      };
+      input.onblur = commit;
+      input.onclick = (ev) => ev.stopPropagation();
+    };
     const del = document.createElement('button');
     del.className = 'sess-del';
     del.textContent = '✕';
     del.title = 'Hapus sesi';
     del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
-    row.append(t, del);
+    row.append(t, pin, edit, del);
     coachSessionList.appendChild(row);
   });
 }
@@ -786,20 +1049,30 @@ el.tempoRange.oninput = () => {
   applyRate(+el.tempoRange.value);
 };
 
-document.getElementById('btn-audio').onclick = () => document.getElementById('file-audio').click();
+document.getElementById('btn-audio').onclick = () => { musicPanel.classList.toggle('hidden'); document.body.classList.toggle('music-open', !musicPanel.classList.contains('hidden')); };
+document.getElementById('music-close').onclick = () => { musicPanel.classList.add('hidden'); document.body.classList.remove('music-open'); };
+document.getElementById('local-audio-btn').onclick = () => document.getElementById('file-audio').click();
+document.getElementById('youtube-search-form').onsubmit = (e) => { e.preventDefault(); searchYoutube(document.getElementById('youtube-query').value); };
+document.getElementById('youtube-url-form').onsubmit = (e) => { e.preventDefault(); const id = youtubeId(document.getElementById('youtube-url').value); if (id) openYoutube(id); else coachSay('URL YouTube tidak dikenali.'); };
+
 document.getElementById('btn-midi').onclick = () => document.getElementById('file-midi').click();
 document.getElementById('file-audio').onchange = (e) => { if (e.target.files[0]) loadAudioFile(e.target.files[0]); };
 document.getElementById('file-midi').onchange = (e) => { if (e.target.files[0]) loadMidiFile(e.target.files[0]); };
 
 el.offset.oninput = () => {
   el.offsetVal.textContent = (el.offset.value > 0 ? '+' : '') + el.offset.value + 'ms';
+  localStorage.setItem('offset', el.offset.value);
 };
-el.offsetVal.textContent = '0ms';
+{
+  const savedOffset = +(localStorage.getItem('offset') || 0);
+  el.offset.value = savedOffset;
+  el.offsetVal.textContent = (savedOffset > 0 ? '+' : '') + savedOffset + 'ms';
+}
 
 let lastInsightAt = -1;
 audio.onEnded = () => {
   el.play.textContent = '▶ Play';
-  if (settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
+  if (coachMode && settingsState.autoSum()) coachSay(coach.summarizeOnEnd());
 };
 
 // Tutorial: load sections from markdown files in /tutorial (see tutorial/manifest.json)
@@ -842,7 +1115,7 @@ if (sessions.length) openSession(sessions[0].id);
 else startSession();
 
 function coachPeriodic(now) {
-  if (!audio.playing || !coachOpen || !settingsState.insight()) return;
+  if (!coachMode || !mediaPlaying() || !coachOpen || !settingsState.insight()) return;
   if (now > 30 && (lastInsightAt === -1 || now - lastInsightAt > 45) && coach.hasData()) {
     lastInsightAt = now;
     const acc = coach.accuracy();
@@ -855,8 +1128,9 @@ function coachPeriodic(now) {
 function loop() {
   if (mode === 'sheet') sheet.render(visualTime(), chart);
   else highway.render(visualTime(), chart, {});
-  el.time.textContent = `${fmtTime(audio.currentTime())} / ${fmtTime(audio.duration())}`;
-  coachPeriodic(audio.currentTime());
+  el.time.textContent = `${fmtTime(mediaTime())} / ${fmtTime(mediaDuration())}`;
+  coachPeriodic(mediaTime());
+  updateChordAt(mediaTime());
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

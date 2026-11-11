@@ -262,8 +262,10 @@ export function createCoach() {
     return parts.join('; ');
   }
 
-  function greeting() {
-    return 'Hai! Aku coach-mu. Mainkan lagu, dan aku analisa timing, akurasi, dan lane terlemahmu.\nTanya apa aja — atau klik chip di bawah.';
+  function greeting(monitoring = true) {
+    return monitoring
+      ? 'Hai! Aku coach-mu. Aku akan memantau timing, akurasi, dan lane terlemah saat kamu bermain.\nTanya apa aja — atau klik chip di bawah.'
+      : 'Hai! Mode chat saja aktif. Aku tidak memantau pukulan atau membuat ringkasan sesi.\nTanya apa aja — atau klik chip di bawah.';
   }
 
   function summarizeOnEnd() {

@@ -5,6 +5,14 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Load local secrets without adding a dotenv runtime dependency.
+try {
+  for (const line of fs.readFileSync(path.join(process.cwd(), '.env'), 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
+  }
+} catch {}
+
 const PORT = process.env.BRIDGE_PORT || 3232;
 const HOST = '127.0.0.1';
 const CLI = { claude: 'claude', codex: 'codex', opencode: 'opencode' };
@@ -74,6 +82,35 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(Object.fromEntries(list)));
     });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/youtube/search?')) {
+    const key = process.env.YOUTUBE_API_KEY;
+    if (!key) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'YOUTUBE_API_KEY belum diatur di .env' }));
+      return;
+    }
+    const query = new URL(req.url, `http://${HOST}:${PORT}`).searchParams.get('q') || '';
+    if (!query.trim()) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Query pencarian kosong' }));
+      return;
+    }
+    const endpoint = new URL('https://www.googleapis.com/youtube/v3/search');
+    endpoint.search = new URLSearchParams({ key, part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '6', q: query.trim() });
+    fetch(endpoint)
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || `YouTube API HTTP ${response.status}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      })
+      .catch((error) => {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+      });
     return;
   }
 

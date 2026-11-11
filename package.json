@@ -1,0 +1,7 @@
+{
+  "name": "drum-play-along",
+  "private": true,
+  "scripts": {
+    "dev": "node start.js"
+  }
+}

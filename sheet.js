@@ -27,8 +27,6 @@ const NOTE_POS = {
 };
 
 const LANE_CUE_Y = { kick: 1, snare: 5, hh: 8, tom: 6, crash: 11, ride: 9 };
-const PX_PER_BEAT = 84;
-const ROW_BEATS = 16;
 
 export function createSheet(canvas) {
   const ctx = canvas.getContext('2d');
@@ -75,27 +73,30 @@ export function createSheet(canvas) {
   function render(now, chart) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#0a0a12';
-    ctx.fillRect(0, 0, w, h);    const rowH = h;
-      const gap = Math.max(10, Math.min(14, rowH * 0.09));
-    const playX = Math.round(w * 0.24);
+    ctx.fillRect(0, 0, w, h);
+    const marginX = Math.min(48, Math.max(8, w * 0.06));
+    const usableW = Math.max(1, w - marginX * 2);
+    const barsPerRow = Math.min(4, Math.max(1, Math.floor(usableW / 180)));
+    const beatsPerRow = barsPerRow * 4;
+    const headerH = Math.min(112, Math.max(76, h * 0.12));
+    const scoreH = Math.max(1, h - headerH);
+    const rowCount = Math.min(8, Math.max(1, Math.floor(scoreH / 120)));
+    const rowH = scoreH / rowCount;
+    const gap = Math.max(6, Math.min(11, rowH * 0.10));
+    const pxPerBeat = usableW / beatsPerRow;
     const bNow = beatsAt(now);
-    const curRow = Math.floor(bNow / ROW_BEATS);
-    let idx = 0;
-    while (idx < chart.length) {
-      const n = chart[idx];
-      if (n.b === undefined) n.b = beatsAt(n.tw ?? n.t);
-      if (n.b < (curRow - 0) * ROW_BEATS - 1) idx++;
-      else break;
-    }
+    const pageStart = Math.max(0, Math.floor(bNow / (beatsPerRow * rowCount)) * beatsPerRow * rowCount);
+    const activeRow = Math.min(rowCount - 1, Math.floor((bNow - pageStart) / beatsPerRow));
+    const playX = marginX + Math.min(beatsPerRow, Math.max(0, (bNow - pageStart) % beatsPerRow)) * pxPerBeat;
 
-    for (let band = 0; band < 1; band++) {
-      const row = curRow - 0 + band;
-      if (row < 0) continue;
-      const bandTop = 0;
-      const bandCY = rowH * 0.56;
-      const yFor = (pitchIdx) => bandCY + (8 - pitchIdx) * (gap / 2);
-      const xStart = playX - (bNow - row * ROW_BEATS) * PX_PER_BEAT;
-      const rowWidth = ROW_BEATS * PX_PER_BEAT;
+    // Wrap the score to fit the available width and height.
+    for (let row = 0; row < rowCount; row++) {
+      const bandTop = headerH + row * rowH;
+      const bandCY = bandTop + rowH * 0.56;
+      const rowStartBeat = pageStart + row * beatsPerRow;
+      const rowPlayX = Math.min(w - marginX, Math.max(marginX, marginX + ((bNow - rowStartBeat) / beatsPerRow) * usableW));
+      const rowGap = gap;
+      const yFor = (pitchIdx) => bandCY + (8 - pitchIdx) * (rowGap / 2);
 
       ctx.save();
       ctx.beginPath();
@@ -129,19 +130,17 @@ export function createSheet(canvas) {
       ctx.lineWidth = 3;
       for (const dx of [0, 7]) {
         ctx.beginPath();
-        ctx.moveTo(xStart + 12 + dx, yFor(0) - gap * 1.3);
-        ctx.lineTo(xStart + 12 + dx, yFor(8) + gap * 1.3);
+        ctx.moveTo(rowPlayX + 12 + dx, yFor(0) - gap * 1.3);
+        ctx.lineTo(rowPlayX + 12 + dx, yFor(8) + gap * 1.3);
         ctx.stroke();
       }
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.font = '700 12px system-ui';
       ctx.textAlign = 'left';
-      ctx.fillText('4/4', xStart + 26, yFor(4) + 4);
+      ctx.fillText('4/4', marginX + 26, yFor(4) + 4);
 
-      for (let bar = Math.max(0, Math.floor((bNow - playX / PX_PER_BEAT - row * ROW_BEATS) / 4));
-           bar <= ROW_BEATS / 4; bar++) {
-        if (bar * 4 > ROW_BEATS) break;
-        const x = xStart + bar * 4 * PX_PER_BEAT;
+      for (let bar = 0; bar <= barsPerRow; bar++) {
+        const x = marginX + bar * 4 * pxPerBeat;
         if (x < -20 || x > w + 20) continue;
         ctx.strokeStyle = 'rgba(255,255,255,0.5)';
         ctx.lineWidth = 1.5;
@@ -149,7 +148,7 @@ export function createSheet(canvas) {
         ctx.moveTo(x, yFor(0));
         ctx.lineTo(x, yFor(8));
         ctx.stroke();
-        const barNum = row * 4 + bar + 1;
+        const barNum = Math.floor(rowStartBeat / 4) + bar + 1;
         ctx.fillStyle = 'rgba(255,255,255,0.4)';
         ctx.font = '600 10px system-ui';
         ctx.textAlign = 'center';
@@ -159,9 +158,9 @@ export function createSheet(canvas) {
       ctx.strokeStyle = 'rgba(255,255,255,0.10)';
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 6]);
-      for (let q = 0; q < ROW_BEATS; q++) {
-        const x = xStart + q * PX_PER_BEAT;
-        if (q % 4 === 0 || x < -10 || x > w + 10) continue;
+      for (let q = 0; q < beatsPerRow; q++) {
+        const x = marginX + q * pxPerBeat;
+        if (q % 4 === 0) continue;
         ctx.beginPath();
         ctx.moveTo(x, yFor(0));
         ctx.lineTo(x, yFor(8));
@@ -169,13 +168,13 @@ export function createSheet(canvas) {
       }
       ctx.setLineDash([]);
 
-      for (let i2 = idx; i2 < chart.length; i2++) {
+      for (let i2 = 0; i2 < chart.length; i2++) {
         const n = chart[i2];
         if (n.b === undefined) n.b = beatsAt(n.tw ?? n.t);
-        const nRow = Math.floor(n.b / ROW_BEATS);
+        const nRow = Math.floor((n.b - pageStart) / beatsPerRow);
         if (nRow < row) continue;
         if (nRow > row) break;
-        const x = xStart + (n.b - row * ROW_BEATS) * PX_PER_BEAT;
+        const x = marginX + (n.b - rowStartBeat) * pxPerBeat;
         if (x > w + 30) break;
         if (x < -30) continue;
         const pos = NOTE_POS[n.note];
@@ -183,7 +182,7 @@ export function createSheet(canvas) {
         const y = yFor(pos.y);
         const color = laneColorOf(pos.lane);
 
-        const nearPlayhead = row === curRow && Math.abs((n.tw ?? n.t) - now) < 0.15 && !n.judged;
+        const nearPlayhead = Math.abs((n.tw ?? n.t) - now) < 0.15 && !n.judged;
         let fill = color;
         let alpha = 1;
         if (n.judged === 'hit') {
@@ -242,19 +241,20 @@ export function createSheet(canvas) {
       }
 
       ctx.restore();
+      if (row === activeRow) {
+        ctx.strokeStyle = 'rgba(124,108,255,0.85)';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(124,108,255,0.7)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(rowPlayX, bandTop + 5);
+        ctx.lineTo(rowPlayX, bandTop + rowH - 5);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
     }
 
-    ctx.strokeStyle = '#7c6cff';
-    ctx.lineWidth = 3;
-    ctx.shadowColor = 'rgba(124,108,255,0.7)';
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.moveTo(playX, 6);
-    ctx.lineTo(playX, h - 6);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    const cueBandCY = (h / 3) * 1 + (h / 3) * 0.56;
+    const cueBandCY = headerH + activeRow * rowH + rowH * 0.56;
     for (let i = flashes.length - 1; i >= 0; i--) {
       const f = flashes[i];
       const age = (performance.now() - f.t0) / 350;

@@ -5,21 +5,33 @@ Dengerin lagu **full mix** (kayak MP3 biasa — drum tidak dimute) sambil **note
 ## Run
 
 ```bash
-python3 -m http.server 8000
-# buka http://localhost:8000 di Chrome/Edge (Firefox 108+ juga bisa)
+node start.js
+# buka http://127.0.0.1:8000 di Chrome/Edge (Firefox 108+ juga bisa)
 ```
+
+Launcher ini menjalankan server app dan bridge lokal sekaligus. Tekan `Ctrl+C` untuk menghentikan launcher dan bridge yang dimulainya; bridge yang sudah aktif sebelumnya tetap berjalan.
 
 Harus lewat `localhost` / HTTPS — Web MIDI & ES modules tidak jalan via `file://`.
 
 ## Cara pakai
 
 1. **Demo song** — langsung tes tanpa file apa pun (audio + chart digenerate di browser).
-2. Atau: **🎵 Audio** → pilih MP3/WAV lagu, **🥁 Drum .mid** → pilih file MIDI yang berisi track drum (channel 10).
+2. **🎵 Music** — cari lagu YouTube, tempel URL video, atau pilih audio lokal. Video YouTube tampil di mini player dan jam sheet mengikuti posisi player. Minta chord lewat Coach; baris bertimestamp akan disorot mengikuti video. Untuk latihan drum pada lagu, muat juga **🥁 Drum .mid** yang cocok.
 3. **Space** = play/pause, **←/→** = seek ±2s.
 4. Sync slider: geser sampai notes pas sama beat yang kedengeran.
 5. Pilih kit di dropdown bawah → mainkan → skor jalan.
 
 Keyboard fallback (buat tes tanpa hardware): `J` kick, `F` snare, `D` hi-hat, `S` toms, `K` ride, `L` crash.
+
+## YouTube Music
+
+Pencarian memakai YouTube Data API v3 melalui bridge lokal. Salin `.env.example` ke `.env`, isi `YOUTUBE_API_KEY`, lalu jalankan `node bridge.js` dari folder proyek. Buat key di Google Cloud dan batasi key ke YouTube Data API v3. Kuota default menyediakan 100 pencarian per hari; satu pencarian memakai satu kuota. URL YouTube dapat dibuka tanpa key. Player memakai embed resmi dan tidak mengekstrak audio. Chord yang dibuat AI adalah perkiraan berdasarkan konteks lagu, bukan transkripsi audio.
+
+```sh
+cp .env.example .env
+# isi YOUTUBE_API_KEY di .env
+node bridge.js
+```
 
 ## Fitur latihan
 
@@ -63,7 +75,7 @@ Toggle pakai tombol di topbar atau shortcut **M**. Mode disimpan di localStorage
 
 - Web MIDI: Chrome/Edge/Firefox desktop ✅, Safari/iOS ❌.
 - Latency: Web MIDI hit umumnya responsif, tapi kalau skor kerasa "telat", atur Sync slider.
-- Semua 100% client-side, gak ada upload ke mana-mana.
+- Audio lokal tetap diproses di browser. Pencarian YouTube memakai bridge lokal dan YouTube Data API; audio/video YouTube diputar lewat embed resmi.
 
 ---
 

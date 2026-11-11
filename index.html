@@ -18,7 +18,7 @@
 
 <div id="topbar">
   <div class="file-group">
-    <button id="btn-audio">🎵 Audio</button>
+    <button id="btn-audio">🎵 Music</button>
     <button id="btn-midi">🥁 Drum .mid</button>
     <span id="audio-name" class="fname">no audio</span>
     <span id="midi-name" class="fname">no chart</span>
@@ -50,10 +50,21 @@
 <input id="file-audio" type="file" accept="audio/*" hidden>
 <input id="file-midi" type="file" accept=".mid,.midi,audio/midi" hidden>
 
+<aside id="music-panel" class="hidden">
+  <div id="music-head"><strong>Music & Chords</strong><button id="music-close" aria-label="Tutup">✕</button></div>
+  <form id="youtube-search-form"><input id="youtube-query" placeholder="Cari lagu di YouTube…"><button type="submit">Cari</button></form>
+  <form id="youtube-url-form"><input id="youtube-url" placeholder="Atau tempel URL YouTube"><button type="submit">Buka</button></form>
+  <button id="local-audio-btn">Pilih audio lokal</button>
+  <div id="youtube-results"></div>
+  <div id="youtube-player-wrap" class="hidden"><div id="youtube-player"></div></div>
+  <section id="chord-panel"><div id="chord-title">Chord lagu</div><div id="chord-content">Pilih video, lalu minta chord di chat Coach.</div></section>
+</aside>
+
 <aside id="coach-panel" class="hidden">
   <div id="coach-head">
     <span>COACH</span>
     <div class="coach-head-btns">
+      <button id="coach-mode-toggle" aria-pressed="true" title="Pantau pukulan atau gunakan chat saja">Pantau: ON</button>
       <button id="coach-sessions" title="Sesi tersimpan">☰</button>
       <button id="coach-new" title="Sesi baru">＋</button>
       <button id="coach-close">✕</button>
@@ -138,6 +149,10 @@
             <div class="inline"><span id="bridge-status"></span><button id="btn-bridge-check">Cek</button></div>
           </div>
           <div class="field"><button id="btn-llm-test">Test koneksi</button><span id="llm-test-result"></span></div>
+          <div class="field"><label>Backup config</label>
+            <div class="inline"><button id="btn-cfg-export">Export</button><button id="btn-cfg-import">Import</button><input id="cfg-file" type="file" accept=".json" class="hidden"></div>
+            <p class="hint">Bawa config & riwayat chat ke browser/URL lain (mis. beda port atau 127.0.0.1 vs localhost).</p>
+          </div>
           <p class="hint">Provider CLI (Claude/Codex/OpenCode) dipanggil lewat bridge lokal — browser tidak bisa spawn CLI langsung. Login dulu di masing-masing CLI: <code>claude</code> (OAuth), <code>codex</code>, <code>opencode</code>.</p>
         </section>
         <section id="page-audio" class="hidden">
